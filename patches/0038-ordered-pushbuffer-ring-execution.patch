@@ -1,0 +1,248 @@
+--- a/src/kernel/nv2a_pb_scan.c
++++ b/src/kernel/nv2a_pb_scan.c
+@@ -1,24 +1,6 @@
+-/*
+- * Read-only survey of the pushbuffer a title submits.
+- *
+- * The title builds NV2A commands in guest RAM and advances DMA_PUT; nothing
+- * here executes them, so the framebuffer stays black however far the game
+- * gets. Before any of that can be made to draw, the question is what it
+- * actually asks for -- which methods, on which object classes, how many of
+- * them -- because that is the difference between "the existing PGRAPH
+- * translator nearly covers this" and "this needs a real one".
+- *
+- * Purely a reader: it walks the buffer and counts, and never writes to guest
+- * memory or to the GPU state. Enabled with RECOMP_PB_SCAN.
+- *
+- * Pushbuffer encoding (NV20/NV2A), one dword per command header:
+- *   (w & 0xE0030003) == 0x00000000  increasing methods
+- *   (w & 0xE0030003) == 0x40000000  non-increasing (same method, count params)
+- *   (w & 0x00000003) == 0x00000001  jump
+- *   (w & 0x00000003) == 0x00000002  call
+- *   (w & 0xFFFF0003) == 0x00020000  return
+- * For a method header: count = (w >> 18) & 0x7FF, subchannel = (w >> 13) & 7,
+- * method = w & 0x1FFC.
++/* NV2A DMA pushbuffer decoder shared by the survey and software executor.
++ * GET advances only across consumed commands. Method packets and subroutine
++ * state persist across PUT updates; jumps can wrap the physical ring.
+  */
+ #include <stdio.h>
+ #include <stdint.h>
+@@ -144,55 +126,67 @@
+     fflush(stderr);
+ }
+ 
+-void nv2a_pb_scan(uint32_t start_va, uint32_t end_va)
++/* One channel is currently supported by the executor. Physical RAM is 64 MiB.
++ * The persistent packet state also permits PUT to stop between parameters. */
++static uint32_t s_remaining, s_method, s_subch, s_return;
++static int s_noninc, s_in_call;
++
++uint32_t nv2a_pb_scan(uint32_t start_va, uint32_t end_va)
+ {
+     const uint8_t *mem = (const uint8_t *)xbox_GetMemoryOffset();
+     uint32_t va = start_va;
+     uint32_t words = 0, jumps = 0, unknown = 0;
+-
+     if (s_exec_enabled < 0)
+         s_exec_enabled = getenv("RECOMP_PB_EXEC") != NULL;
+-    if (!(getenv("RECOMP_PB_SCAN") || s_exec_enabled) || end_va <= start_va)
+-        return;
+-    if (end_va - start_va > 0x400000u)        /* a sane single-frame bound */
+-        end_va = start_va + 0x400000u;
+-
+-    while (va < end_va && words < 0x100000u) {
++    if (!(getenv("RECOMP_PB_SCAN") || s_exec_enabled))
++        return end_va;
++    if ((start_va & 3) || (end_va & 3))
++        return start_va;
++
++    while (va != end_va && words < 0x100000u) {
++        if (va < 0x80000000u || va >= 0x84000000u)
++            break;
+         uint32_t w = *(const uint32_t *)(mem + va);
+-        va += 4;
+-        words++;
+-
+-        if ((w & 3u) == 1u || (w & 0xE0000003u) == 0x20000000u) {
++        if (s_remaining) {
++            note(s_subch, s_method);
++            if (s_exec_enabled)
++                nv2a_pb_exec_method(s_subch, s_method, w);
++            s_remaining--;
++            if (!s_noninc) s_method += 4;
++            va += 4;
++        } else if ((w & 0xE0000003u) == 0x20000000u || (w & 3u) == 1u) {
++            uint32_t target = (w & 3u) == 1u ? w & ~3u : w & 0x1FFFFFFFu;
++            if (target >= 0x04000000u) break;
++            va = 0x80000000u | target;
+             jumps++;
+-            break;                            /* a jump ends this segment */
+-        }
+-        if ((w & 3u) == 2u || (w & 0xFFFF0003u) == 0x00020000u)
+-            continue;
+-        if ((w & 0x00030003u) == 0u) {
+-            uint32_t count  = (w >> 18) & 0x7FFu;
+-            uint32_t subch  = (w >> 13) & 7u;
+-            uint32_t method =  w & 0x1FFCu;
+-            int noninc = (w & 0xE0000000u) == 0x40000000u;
+-
+-            for (uint32_t i = 0; i < count && va < end_va; i++) {
+-                uint32_t m = noninc ? method : method + i * 4;
+-                note(subch, m);
+-                /* Same walk, two consumers: the survey counts, the executor
+-                 * acts. Keeping them on one decode means they can never
+-                 * disagree about what the stream said. */
+-                if (s_exec_enabled)
+-                    nv2a_pb_exec_method(subch, m,
+-                                        *(const uint32_t *)(mem + va));
+-                va += 4;
+-                words++;
+-            }
+-            continue;
++        } else if ((w & 3u) == 2u) {
++            uint32_t target = w & ~3u;
++            if (s_in_call || target >= 0x04000000u) break;
++            s_return = va + 4;
++            s_in_call = 1;
++            va = 0x80000000u | target;
++        } else if (w == 0x00020000u) {
++            if (!s_in_call) break;
++            va = s_return;
++            s_in_call = 0;
++        } else if ((w & 0xE0030003u) == 0 ||
++                   (w & 0xE0030003u) == 0x40000000u) {
++            s_remaining = (w >> 18) & 0x7FFu;
++            s_subch = (w >> 13) & 7u;
++            s_method = w & 0x1FFCu;
++            s_noninc = (w & 0x40000000u) != 0;
++            va += 4;
++        } else {
++            unknown++;
++            break; /* Never acknowledge an undecoded command. */
+         }
+-        unknown++;
++        words++;
+     }
+-
++    if (unknown)
++        fprintf(stderr, "[PB] invalid command at 0x%08X\n", va);
+     s_tot_words += words;
+     s_tot_unknown += unknown;
+     s_tot_jumps += jumps;
+     s_tot_segments++;
++    return va;
+ }
+--- a/src/kernel/xbox_memory_layout.c
++++ b/src/kernel/xbox_memory_layout.c
+@@ -590,90 +590,33 @@
+                 *r |= NV2A_IDLE[i].idle_mask;
+             }
+         }
+-        {
+-            volatile uint32_t *put =
+-                (volatile uint32_t *)((char *)regs + NV2A_USER_DMA_PUT);
+-            volatile uint32_t *get =
+-                (volatile uint32_t *)((char *)regs + NV2A_USER_DMA_GET);
+-            if (*get != *put) {
+-                *get = *put;
+-            }
+-        }
+         fence_mirrors_tick();
+         counter_mirrors_tick();
+         frame_counters_tick();
+         framebuffer_probe_tick();
+ 
+-        /* Which framebuffer the display would be scanning out.
+-         *
+-         * PCRTC_START holds the address the CRTC reads pixels from, so
+-         * whatever the title last set there is the frame it believes is on
+-         * screen. Nothing here scans out, so this is the one place that says
+-         * whether the guest is producing an image at all -- and where it is.
+-         * Gated, because it is a bring-up question, not a runtime one. */
+-        /* Not gated on the trace flag: nv2a_pb_scan is what drives the
+-         * executor, and it already returns unless RECOMP_PB_SCAN or
+-         * RECOMP_PB_EXEC asked for it. Gating the call as well meant
+-         * RECOMP_PB_EXEC on its own did nothing at all, and the executor
+-         * only ran when someone happened to also be tracing. */
++        /* Consume from the real GET cursor, following ring jumps. Acknowledge
++         * only after execution: the guest may immediately reuse completed RAM. */
+         {
+-            /* Is the title submitting GPU work at all? PUT is where the
+-             * title's pushbuffer writer has got to; if it never moves, nothing
+-             * is being drawn and the missing piece is upstream of the GPU. */
+-            static DWORD  last_put_ms;
+-            static uint32_t last_put;
++            extern uint32_t nv2a_pb_scan(uint32_t, uint32_t);
++            extern void nv2a_pb_scan_report(void);
++            volatile uint32_t *get = (volatile uint32_t *)((char *)regs + NV2A_USER_DMA_GET);
++            volatile uint32_t *put_reg = (volatile uint32_t *)((char *)regs + NV2A_USER_DMA_PUT);
++            uint32_t put = *put_reg, before = *get;
++            static DWORD last_report, last_trace;
+             DWORD now_ms = GetTickCount();
+-            uint32_t put = *(volatile uint32_t *)((char *)regs + NV2A_USER_DMA_PUT);
+-            if (put != last_put || (now_ms - last_put_ms) > 2000) {
+-                /* Survey the segment the title just submitted, once. */
+-                {
+-                    extern void nv2a_pb_scan(uint32_t, uint32_t);
+-                    extern void nv2a_pb_scan_report(void);
+-                    static DWORD last_report;
+-
+-                    /* DMA_PUT holds a PHYSICAL address -- Xbox D3D writes
+-                     * `VA & 0x0FFFFFFF` and reads the GPU's position back as
+-                     * `GET | 0x80000000`. nv2a_pb_scan reads guest VAs, so
+-                     * handing it the raw register value pointed it at low
+-                     * memory: for the Xbox Dashboard, whose pushbuffer is at
+-                     * 0x80001000, PUT reads 0x1000 and the survey walked the
+-                     * fake TIB. It reported a plausible-looking inventory of
+-                     * nothing, which is worse than reporting none -- the
+-                     * conclusion drawn was "the title submits no methods"
+-                     * while it was submitting them the whole time.
+-                     *
+-                     * The contiguous window IS the physical-address view, so
+-                     * OR-ing its base is the documented round trip, not a
+-                     * guess. */
+-                    if (last_put && put > last_put)
+-                        nv2a_pb_scan(XBOX_CONTIG_BASE | (last_put & 0x0FFFFFFFu),
+-                                     XBOX_CONTIG_BASE | (put      & 0x0FFFFFFFu));
+-                    /* Periodic, because what the title submits at init is not
+-                     * what it submits once it is drawing a menu, and the
+-                     * question the survey answers is about the latter. */
+-                    if (s_nv2a_trace && now_ms - last_report > 10000) {
+-                        last_report = now_ms;
+-                        nv2a_pb_scan_report();
+-                    }
+-                }
+-                last_put = put; last_put_ms = now_ms;
+-                /* GET as well as PUT. A title that stops submitting has either
+-                 * finished or is spinning on the GPU catching up, and only GET
+-                 * tells those apart -- D3D waits for GET to reach PUT before it
+-                 * reuses the buffer, so GET stuck behind PUT is the shape of a
+-                 * pushbuffer-full hang. Also show the same pair as the Xbox
+-                 * Dashboard reads them: its D3D holds a register-block pointer
+-                 * in its device struct rather than assuming 0xFD800000, and
+-                 * mirroring the wrong block leaves it spinning on a GET that
+-                 * never moves. */
+-                if (s_nv2a_trace) {
+-                    uint32_t g = *(volatile uint32_t *)
+-                                 ((char *)regs + NV2A_USER_DMA_GET);
+-                    fprintf(stderr, "  [NV2A] DMA_PUT = 0x%08X  DMA_GET = "
+-                            "0x%08X%s\n", put, g,
+-                            g == put ? "" : "  (GPU behind)");
+-                }
+-                fflush(stderr);
++            if (before != put) {
++                uint32_t consumed = nv2a_pb_scan(XBOX_CONTIG_BASE | before,
++                                                XBOX_CONTIG_BASE | put);
++                *get = consumed & 0x0FFFFFFFu;
++            }
++            if (s_nv2a_trace && now_ms - last_report > 10000) {
++                nv2a_pb_scan_report();
++                last_report = now_ms;
++            }
++            if (s_nv2a_trace && now_ms - last_trace > 2000) {
++                fprintf(stderr, "  [NV2A] DMA_PUT = 0x%08X  DMA_GET = 0x%08X\n", put, *get);
++                last_trace = now_ms;
+             }
+         }
+         if (s_nv2a_trace) {

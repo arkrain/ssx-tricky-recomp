@@ -1,0 +1,101 @@
+diff --git a/src/video/fb_present.c b/src/video/fb_present.c
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -221,6 +221,7 @@
+ #include <stdio.h>
+ #include <string.h>
+ #include "../kernel/xbox_memory_layout.h"
++#include "fb_timing.h"
+ 
+ extern ptrdiff_t xbox_GetMemoryOffset(void);
+ static pthread_mutex_t fb_lock = PTHREAD_MUTEX_INITIALIZER;
+@@ -228,11 +229,16 @@
+ static int fb_started;
+ static uint32_t fb_completed[640 * 480], movie_pixels[640 * 480];
+ static int movie_active;
++/* Read-only diagnostics: these count SDL presentations and newly consumed
++ * framebuffer/movie handoffs, not monitor scanouts or guest flip commands. */
++static uint64_t fb_source_generation, fb_clock_frequency;
++static volatile uint64_t fb_presentations, fb_new_presentations, fb_render_ticks;
+ void xbox_FramebufferMovieFrame(const uint32_t *pixels)
+ {
+     pthread_mutex_lock(&fb_lock);
+     if(pixels)memcpy(movie_pixels,pixels,sizeof movie_pixels);
+     movie_active=pixels!=NULL;
++    ++fb_source_generation;
+     pthread_mutex_unlock(&fb_lock);
+ }
+ 
+@@ -256,6 +262,7 @@
+                          ((((v >> 5) & 63) * 255 / 63) << 8) | ((v & 31) * 255 / 31);
+             }
+         }
++        ++fb_source_generation;
+     }
+     pthread_mutex_unlock(&fb_lock);
+ }
+@@ -281,7 +288,13 @@
+     surface = SDL_CreateRGBSurfaceWithFormat(0, 640, 480, 32, SDL_PIXELFORMAT_ARGB8888);
+     if (!texture || !surface) goto fail;
+     fprintf(stderr, "[FBWIN] Linux framebuffer window open (640x480)\n");
++    fb_clock_frequency=SDL_GetPerformanceFrequency();
++    uint64_t deadline=SDL_GetPerformanceCounter(), consumed=0;
++    const char *legacy_option=getenv("RECOMP_FB_LEGACY_PACING");
++    int legacy_pacing=legacy_option && !strcmp(legacy_option,"1");
++    fprintf(stderr,"[FBWIN] pacing: %s\n",legacy_pacing?"legacy post-work delay":"60 Hz deadline");
+     for (;;) {
++        uint64_t work_start=SDL_GetPerformanceCounter();
+         SDL_Event event;
+         while (SDL_PollEvent(&event)) {
+             if (event.type == SDL_QUIT) { quit_requested = 1; goto done; }
+@@ -299,6 +312,7 @@
+                     (address >= 0x80000000u && end <= 0x84000000ull);
+         if (movie || (valid && (pitch == 640 * 4 || pitch == 640 * 2))) {
+             pthread_mutex_lock(&fb_lock);
++            uint64_t generation=fb_source_generation;
+             for (unsigned y = 0; y < 480; ++y)
+                 memcpy((uint8_t *)surface->pixels + y * surface->pitch,
+                        (movie_active ? movie_pixels : fb_completed) + y * 640, 2560);
+@@ -307,12 +321,16 @@
+             SDL_RenderClear(renderer);
+             SDL_RenderCopy(renderer, texture, NULL, NULL);
+             SDL_RenderPresent(renderer);
++            ++fb_presentations;
++            if(generation!=consumed){++fb_new_presentations;consumed=generation;}
+             const char *capture = getenv("RECOMP_FB_CAPTURE");
+             if (capture && (++frames == 1 || frames % 120 == 0)) {
+                 if (SDL_SaveBMP(surface, capture)) fprintf(stderr, "[FBWIN] capture: %s\n", SDL_GetError());
+             }
+         }
+-        SDL_Delay(16);
++        uint64_t work_end=SDL_GetPerformanceCounter();
++        fb_render_ticks+=work_end-work_start;
++        SDL_Delay(legacy_pacing?16:fb_frame_wait_ms(&deadline,work_end,fb_clock_frequency));
+     }
+ fail:
+     fprintf(stderr, "[FBWIN] SDL display failed: %s\n", SDL_GetError());
+diff --git a/src/video/fb_timing.h b/src/video/fb_timing.h
+new file mode 100644
+--- /dev/null
++++ b/src/video/fb_timing.h
+@@ -0,0 +1,20 @@
++#ifndef XBOX_FB_TIMING_H
++#define XBOX_FB_TIMING_H
++#include <stdint.h>
++
++/* Schedule frame starts, including time already spent rendering. A slow
++ * frame resets the deadline instead of adding another full frame of sleep.
++ * Round sleeps up to milliseconds; subsequent deadlines absorb that jitter. */
++static uint32_t fb_frame_wait_ms(uint64_t *deadline, uint64_t now,
++                                 uint64_t frequency)
++{
++    uint64_t period=frequency/60;
++    *deadline+=period;
++    if(now>=*deadline) {
++        *deadline=now;
++        return 0;
++    }
++    uint64_t remaining=*deadline-now;
++    return (uint32_t)((remaining*1000+frequency-1)/frequency);
++}
++#endif

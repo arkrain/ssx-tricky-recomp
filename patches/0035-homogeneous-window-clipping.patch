@@ -1,0 +1,74 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1315,6 +1315,61 @@
+  * a batch whose texcoords cannot be read is drawn untextured rather than not
+  * at all, so a missing coordinate stream costs the colour and not the shape.
+  */
++/* Clip shader geometry before perspective division. The vertex program has
++ * already applied the viewport/divide, but retains clip W in position.w.
++ * Reconstruct homogeneous window coordinates and interpolate every varying. */
++static void raster_shader_triangle(float p[3][4], uint32_t argb)
++{
++    float poly[2][10][28];
++    int count=3, src=0;
++    for(int v=0;v<3;v++) {
++        for(int k=0;k<4;k++) if(!isfinite(p[v][k])) return;
++        memcpy(poly[0][v],p[v],16);
++        for(int k=0;k<3;k++) poly[0][v][k]*=p[v][3];
++        memcpy(poly[0][v]+4,s_triangle_color[v],32);
++        memcpy(poly[0][v]+12,s_triangle_tex[v],64);
++    }
++    for(int plane=0;plane<5;plane++) {
++        int dst=src^1, n=0;
++        for(int i=0;i<count;i++) {
++            float *a=poly[src][i], *b=poly[src][(i+1)%count];
++            float da,db;
++            if(!plane) { da=a[3]-1e-5f; db=b[3]-1e-5f; }
++            else {
++                int axis=plane<=2?0:1;
++                float edge=axis?s_gpu.clip_y:s_gpu.clip_x;
++                if(!(plane&1)) edge+=axis?s_gpu.clip_h:s_gpu.clip_w;
++                da=a[axis]-edge*a[3]; db=b[axis]-edge*b[3];
++                if(!(plane&1)) { da=-da; db=-db; }
++            }
++            if(da>=0) { if(n>=10)return; memcpy(poly[dst][n++],a,112); }
++            if((da>=0)!=(db>=0)) {
++                if(n>=10)return;
++                double t=(double)da/((double)da-db);
++                for(int k=0;k<28;k++) poly[dst][n][k]=(float)(a[k]+t*((double)b[k]-a[k]));
++                n++;
++            }
++        }
++        count=n;src=dst;
++        if(count<3)return;
++    }
++    for(int i=1;i<count-1;i++) {
++        int indices[3]={0,i,i+1}; float screen[3][4],uv[3][2];
++        for(int v=0;v<3;v++) {
++            float *a=poly[src][indices[v]];
++            for(int k=0;k<3;k++)screen[v][k]=a[k]/a[3];
++            screen[v][3]=a[3];
++            memcpy(s_triangle_color[v],a+4,32);
++            memcpy(s_triangle_tex[v],a+12,64);
++            uv[v][0]=a[12];uv[v][1]=a[13];
++            if(tex_size_from_format(s_gpu.tex.color)) {
++                uv[v][0]*=s_gpu.tex.width;uv[v][1]*=s_gpu.tex.height;
++            }
++        }
++        raster_triangle(screen[0],screen[1],screen[2],argb,uv);
++    }
++}
++
+ /* Indexed triangles share vertices. State is immutable within raster_batch;
+  * invalidate the cache at every batch, including failed/empty batches. */
+ static struct { uint32_t index, generation; float out[13][4]; } s_vertex_cache[256];
+@@ -1363,7 +1418,8 @@
+         textured = fetch_texcoord(i0, uv[0]) && fetch_texcoord(i1, uv[1]) && fetch_texcoord(i2, uv[2]);
+     }
+ 
+-    raster_triangle(p[0], p[1], p[2], argb,
++    if (ssx_vertex_active()) raster_shader_triangle(p,argb);
++    else raster_triangle(p[0], p[1], p[2], argb,
+                     textured ? (const float (*)[2])uv : NULL);
+ }
+ 

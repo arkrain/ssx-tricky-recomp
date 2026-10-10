@@ -1,0 +1,99 @@
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -251,7 +251,7 @@
+ 
+ def _fmt_mem_read(op):
+     """Format reading from a memory operand."""
+-    accessor = _mem_accessor(op.mem_size)
++    accessor = "RECOMP_READ32" if op.mem_size == 4 else _mem_accessor(op.mem_size)
+     addr = _fmt_mem(op)
+     return f"{accessor}({addr})"
+ 
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -371,10 +371,32 @@
+ #define MEM16(addr)  (*(volatile uint16_t *)XBOX_PTR(addr))
+ #define MEM32(addr)  (*(volatile uint32_t *)XBOX_PTR(addr))
+ 
++/* Portable scalar device reads; MEM32 remains an lvalue for RAM strings. */
++#ifdef RECOMP_DIRECT_USB_MMIO
++extern int xbox_OhciRead32(uint32_t addr, uint32_t *value);
++extern int xbox_OhciWrite32(uint32_t addr, uint32_t value);
++static inline int RECOMP_USB_ADDRESS(uint32_t addr)
++{
++    return (addr >= 0xFED00000u && addr < 0xFED01000u) ||
++           (addr >= 0xFED08000u && addr < 0xFED09000u);
++}
++#endif
++static inline uint32_t RECOMP_READ32(uint32_t addr)
++{
++#ifdef RECOMP_DIRECT_USB_MMIO
++    uint32_t value;
++    if (RECOMP_USB_ADDRESS(addr) && xbox_OhciRead32(addr, &value)) return value;
++#endif
++    return MEM32(addr);
++}
++
+ /* PCRTC interrupt status is write-one-to-clear, not ordinary RAM. Keep
+  * the summary pending until guest acknowledgement, including across DPCs. */
+ static inline void RECOMP_STORE32(uint32_t addr, uint32_t value)
+ {
++#ifdef RECOMP_DIRECT_USB_MMIO
++    if (RECOMP_USB_ADDRESS(addr) && xbox_OhciWrite32(addr, value)) return;
++#endif
+     if (addr == 0xFD600100u || addr == 0xFD600140u ||
+         addr == 0xFD400100u || addr == 0xFD400140u) {
+         uint32_t status = addr & ~0x40u;
+--- a/src/usb/ohci.c
++++ b/src/usb/ohci.c
+@@ -766,13 +766,10 @@
+             XBOX_OHCI0_BASE, XBOX_OHCI1_BASE, OHCI_PORTS);
+     fflush(stderr);
+ 
+-#if defined(_WIN32)
+     {
+         HANDLE th = CreateThread(NULL, 0, ohci_thread, NULL, 0, NULL);
+-        if (th)
+-            CloseHandle(th);
+-    }
+-#endif
++        if (th) CloseHandle(th);
++    }
+ }
+ 
+ static OhciController *hc_for(uint32_t va)
+@@ -785,6 +782,21 @@
+         if (va >= s_hc[i].base && va < s_hc[i].base + XBOX_OHCI_SIZE)
+             return &s_hc[i];
+     return NULL;
++}
++
++int xbox_OhciRead32(uint32_t addr, uint32_t *value)
++{
++    OhciController *hc = hc_for(addr);
++    if (!hc || !value || (addr & 3)) return 0;
++    *value = (uint32_t)ohci_read(hc, addr - hc->base, 4);
++    return 1;
++}
++int xbox_OhciWrite32(uint32_t addr, uint32_t value)
++{
++    OhciController *hc = hc_for(addr);
++    if (!hc || (addr & 3)) return 0;
++    ohci_write(hc, addr - hc->base, value, 4);
++    return 1;
+ }
+ 
+ int xbox_OhciOwnsAddress(uint32_t xbox_va)
+--- a/src/usb/ohci.h
++++ b/src/usb/ohci.h
+@@ -41,6 +41,10 @@
+  * and stepped over. `ctx` is a PCONTEXT; void * keeps windows.h out of here. */
+ int  xbox_OhciHandleMmio(void *ctx, uint32_t xbox_va);
+ 
++/* Portable scalar MMIO entry points for generated code. */
++int xbox_OhciRead32(uint32_t addr, uint32_t *value);
++int xbox_OhciWrite32(uint32_t addr, uint32_t value);
++
+ /* Report counts at exit, so a run says whether the driver ever looked. */
+ void xbox_OhciReport(void);
+ 

@@ -1,0 +1,120 @@
+--- a/src/kernel/kernel_sync.c
++++ b/src/kernel/kernel_sync.c
+@@ -547,8 +547,36 @@
+  * KeSynchronizeExecution
+  *
+  * On Xbox, this raises IRQL to the interrupt's level and executes a routine.
+- * Since we don't have real IRQLs, we just call the routine directly.
+- * ============================================================================ */
++ * Host callbacks share the interrupt object lock with the ISR worker.
++ * Full guest processor IRQL scheduling is not modeled here.
++ * ============================================================================ */
++
++/* Host ISR workers and guest synchronization callbacks must share exclusion.
++ * Locks are striped by native interrupt-object address; collisions merely
++ * serialize unrelated objects. Critical sections allow same-thread nesting.
++ * Initialization is published only after every lock is ready. */
++static CRITICAL_SECTION interrupt_locks[64];
++static volatile LONG interrupt_locks_state;
++static CRITICAL_SECTION *interrupt_lock(PVOID interrupt)
++{
++    if (InterlockedCompareExchange(&interrupt_locks_state, 1, 0) == 0) {
++        for (unsigned i = 0; i < 64; ++i)
++            InitializeCriticalSection(&interrupt_locks[i]);
++        InterlockedExchange(&interrupt_locks_state, 2);
++    } else {
++        while (InterlockedCompareExchange(&interrupt_locks_state, 2, 2) != 2)
++            Sleep(0);
++    }
++    return &interrupt_locks[((uintptr_t)interrupt >> 4) & 63];
++}
++void xbox_InterruptEnter(PVOID interrupt)
++{
++    EnterCriticalSection(interrupt_lock(interrupt));
++}
++void xbox_InterruptLeave(PVOID interrupt)
++{
++    LeaveCriticalSection(interrupt_lock(interrupt));
++}
+ 
+ BOOLEAN __stdcall xbox_KeSynchronizeExecution(
+     PXBOX_KINTERRUPT Interrupt,
+@@ -558,12 +586,13 @@
+     typedef BOOLEAN (__stdcall *PKSYNCHRONIZE_ROUTINE)(PVOID);
+     PKSYNCHRONIZE_ROUTINE routine = (PKSYNCHRONIZE_ROUTINE)SynchronizeRoutine;
+ 
+-    (void)Interrupt;
+-
+     if (!routine)
+         return FALSE;
+ 
+-    return routine(SynchronizeContext);
++    xbox_InterruptEnter(Interrupt);
++    BOOLEAN result = routine(SynchronizeContext);
++    xbox_InterruptLeave(Interrupt);
++    return result;
+ }
+ 
+ /* ============================================================================
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -1829,13 +1829,12 @@
+  * ran -- the same failure as an unqueued DPC, and just as quiet: the driver
+  * asks for exclusive access, is told it did not get it, and skips the work.
+  *
+- * ponytail: no lock is taken. Nothing else here runs at ISR IRQL, and the one
+- * caller that matters is a device model on its own thread; if two of those
+- * ever contend, this wants the interrupt object's own lock rather than a
+- * global one.
++ * Shares host exclusion with both USB and GPU ISR dispatch. Guest processor
++ * IRQL scheduling remains separate from this interrupt-object exclusion.
+  */
+ static void bridge_KeSynchronizeExecution(void)
+ {
++    uint32_t interrupt = STACK_ARG(0);
+     uint32_t routine = STACK_ARG(1);
+     uint32_t context = STACK_ARG(2);
+     recomp_func_t fn;
+@@ -1854,7 +1853,9 @@
+      * the dummy return address and the argument, so g_esp needs no fixup. */
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = context;
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = 0;
++    xbox_InterruptEnter(XBOX_TO_NATIVE(interrupt));
+     fn();
++    xbox_InterruptLeave(XBOX_TO_NATIVE(interrupt));
+     /* g_eax is whatever the routine returned, which is this call's result. */
+ }
+ 
+@@ -1961,7 +1962,9 @@
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = context;
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = kint;
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = 0;
++    xbox_InterruptEnter(XBOX_TO_NATIVE(kint));
+     fn();
++    xbox_InterruptLeave(XBOX_TO_NATIVE(kint));
+     return (int)(g_eax & 1u);
+ }
+ 
+--- a/src/kernel/kernel.h
++++ b/src/kernel/kernel.h
+@@ -750,6 +750,8 @@
+ BOOLEAN  __stdcall xbox_KeInsertQueueDpc(PXBOX_KDPC Dpc, PVOID SystemArgument1, PVOID SystemArgument2);
+ BOOLEAN  __stdcall xbox_KeRemoveQueueDpc(PXBOX_KDPC Dpc);
+ 
++void xbox_InterruptEnter(PVOID Interrupt);
++void xbox_InterruptLeave(PVOID Interrupt);
+ BOOLEAN  __stdcall xbox_KeSynchronizeExecution(PXBOX_KINTERRUPT Interrupt, PVOID SynchronizeRoutine, PVOID SynchronizeContext);
+ 
+ /* ============================================================================
+--- a/src/usb/ohci.c
++++ b/src/usb/ohci.c
+@@ -550,7 +550,9 @@
+     g_esp -= 4; *(uint32_t *)(mem + g_esp) = kinterrupt;   /* arg 1 */
+     g_esp -= 4; *(uint32_t *)(mem + g_esp) = 0xDEADBEEFu;  /* return address */
+ 
++    xbox_InterruptEnter(mem + kinterrupt);
+     fn();
++    xbox_InterruptLeave(mem + kinterrupt);
+ 
+     xbox_worker_stack_free(slot);
+     return (int)(g_eax & 1u);

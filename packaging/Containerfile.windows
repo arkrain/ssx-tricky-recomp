@@ -1,0 +1,46 @@
+# Optional Win64 cross-build; native Windows validation is still required.
+FROM docker.io/library/ubuntu:24.04@sha256:534baea6a22c03a63003dbc8dbe78fe34bc0d7e595d9a9dc9834884ff530eb55
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    gcc libc6-dev make gcc-mingw-w64-x86-64-posix mingw-w64-tools \
+    cmake ninja-build meson pkg-config python3 curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY mingw64-epoxy.ini /tmp/mingw64-epoxy.ini
+RUN curl -fL https://github.com/anholt/libepoxy/archive/refs/tags/1.5.10.tar.gz -o /tmp/epoxy.tar.gz \
+    && echo 'a7ced37f4102b745ac86d6a70a9da399cc139ff168ba6b8002b4d8d43c900c15  /tmp/epoxy.tar.gz' | sha256sum -c - \
+    && tar -xzf /tmp/epoxy.tar.gz -C /tmp \
+    && meson setup /tmp/epoxy-build /tmp/libepoxy-1.5.10 --cross-file /tmp/mingw64-epoxy.ini \
+        --prefix /opt/windows-prefix -Dbuildtype=release -Ddefault_library=shared \
+        -Dtests=false -Dx11=false -Dglx=no -Degl=no \
+    && meson compile -C /tmp/epoxy-build && meson install -C /tmp/epoxy-build \
+    && mkdir -p /opt/windows-prefix/licenses \
+    && cp /tmp/libepoxy-1.5.10/COPYING /opt/windows-prefix/licenses/libepoxy.txt \
+    && rm -rf /tmp/epoxy-build /tmp/libepoxy-1.5.10 /tmp/epoxy.tar.gz
+COPY mingw64-toolchain.cmake /tmp/mingw64-toolchain.cmake
+RUN curl -fL https://github.com/libsdl-org/SDL/archive/refs/tags/release-2.32.10.tar.gz -o /tmp/sdl.tar.gz \
+    && echo '03f9d7c191a837525c9cda6406af2f2e48be02b5e7eb03d949cc9f1e9ca41c8b  /tmp/sdl.tar.gz' | sha256sum -c - \
+    && tar -xzf /tmp/sdl.tar.gz -C /tmp \
+    && cmake -S /tmp/SDL-release-2.32.10 -B /tmp/sdl-build -G Ninja \
+        -DCMAKE_TOOLCHAIN_FILE=/tmp/mingw64-toolchain.cmake -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/opt/windows-prefix -DSDL_SHARED=ON -DSDL_STATIC=OFF \
+        -DSDL_TEST=OFF -DSDL_TESTS=OFF \
+    && cmake --build /tmp/sdl-build -j4 && cmake --install /tmp/sdl-build \
+    && cp /tmp/SDL-release-2.32.10/LICENSE.txt /opt/windows-prefix/licenses/SDL2.txt \
+    && rm -rf /tmp/sdl-build /tmp/SDL-release-2.32.10 /tmp/sdl.tar.gz
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xz-utils && rm -rf /var/lib/apt/lists/*
+RUN curl -fL https://ffmpeg.org/releases/ffmpeg-5.1.10.tar.xz -o /tmp/ffmpeg.tar.xz \
+    && echo '392306d6fc45dab0e9e0ea55381e071842e83a2fb31d320aeda40477a7766293  /tmp/ffmpeg.tar.xz' | sha256sum -c - \
+    && tar -xf /tmp/ffmpeg.tar.xz -C /tmp && mkdir /tmp/ffmpeg-build \
+    && cd /tmp/ffmpeg-build \
+    && /tmp/ffmpeg-5.1.10/configure --prefix=/opt/windows-prefix \
+        --target-os=mingw32 --arch=x86_64 --enable-cross-compile \
+        --cross-prefix=x86_64-w64-mingw32- --cc=x86_64-w64-mingw32-gcc-posix \
+        --disable-everything --disable-autodetect --disable-programs --disable-doc \
+        --disable-network --disable-debug --disable-x86asm \
+        --disable-avdevice --disable-avfilter --disable-postproc \
+        --enable-avcodec --enable-avformat --enable-avutil --enable-swscale --enable-swresample \
+        --enable-decoder=mpeg2video,adpcm_ea_r1 --enable-parser=mpegvideo \
+        --enable-demuxer=ea --enable-protocol=file --enable-shared --disable-static \
+    && make -j4 && make install \
+    && cp /tmp/ffmpeg-5.1.10/COPYING.LGPLv2.1 /opt/windows-prefix/licenses/ffmpeg-LGPLv2.1.txt \
+    && cd /tmp && rm -rf /tmp/ffmpeg-build /tmp/ffmpeg-5.1.10 /tmp/ffmpeg.tar.xz
+WORKDIR /workspace

@@ -1,0 +1,88 @@
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -399,7 +399,8 @@
+     "minps", "maxps", "sqrtps", "rsqrtps", "rcpps",
+     "shufps", "unpcklps", "unpckhps",
+     "andps", "orps", "xorps", "andnps",
+-    "cmpps", "cmpneqps",
++    "cmpps", "cmpeqps", "cmpltps", "cmpleps", "cmpneqps",
++    "cmpunordps", "cmpnltps", "cmpnleps", "cmpordps",
+     "movmskps",
+     # SSE2 packed double
+     "movapd", "movupd",
+@@ -1372,6 +1373,7 @@
+                  "minps", "maxps", "rsqrtss", "rcpss",
+                  "sqrtps", "rsqrtps", "rcpps",
+                  "cmpneqps", "cmpeqps", "cmpltps", "cmpleps",
++                 "cmpunordps", "cmpnltps", "cmpnleps", "cmpordps",
+                  "movmskps",
+                  "pand", "pandn", "por", "pxor", "pcmpgtd"):
+             return self._lift_sse(insn, m, ops)
+@@ -2849,9 +2851,12 @@
+                         f"{ops[0].reg}.f[_lane] = {expr}; }} /* {m} */"]
+ 
+         # ── Packed comparison ──
+-        if m in ("cmpneqps", "cmpeqps", "cmpltps", "cmpleps"):
++        if m in ("cmpneqps", "cmpeqps", "cmpltps", "cmpleps",
++                 "cmpunordps", "cmpnltps", "cmpnleps", "cmpordps"):
+             helper = {"cmpeqps": "XMM_CMP_EQ", "cmpltps": "XMM_CMP_LT",
+-                      "cmpleps": "XMM_CMP_LE", "cmpneqps": "XMM_CMP_NEQ"}[m]
++                      "cmpleps": "XMM_CMP_LE", "cmpneqps": "XMM_CMP_NEQ",
++                      "cmpunordps": "XMM_CMP_UNORD", "cmpnltps": "XMM_CMP_NLT",
++                      "cmpnleps": "XMM_CMP_NLE", "cmpordps": "XMM_CMP_ORD"}[m]
+             lifted = _packed_binary(helper)
+             if lifted is not None:
+                 return lifted
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -600,6 +600,12 @@
+ RECOMP_XMM_BITWISE(XMM_CMP_LT,  (a.f[i] <  b.f[i]) ? 0xFFFFFFFFu : 0u)
+ RECOMP_XMM_BITWISE(XMM_CMP_LE,  (a.f[i] <= b.f[i]) ? 0xFFFFFFFFu : 0u)
+ RECOMP_XMM_BITWISE(XMM_CMP_NEQ, (a.f[i] == b.f[i]) ? 0u : 0xFFFFFFFFu)
++/* NLT/NLE include unordered lanes; spelling them as >=/> loses NaNs. */
++RECOMP_XMM_BITWISE(XMM_CMP_NLT, (a.f[i] < b.f[i]) ? 0u : 0xFFFFFFFFu)
++RECOMP_XMM_BITWISE(XMM_CMP_NLE, (a.f[i] <= b.f[i]) ? 0u : 0xFFFFFFFFu)
++RECOMP_XMM_BITWISE(XMM_CMP_UNORD, (isnan(a.f[i]) || isnan(b.f[i])) ? 0xFFFFFFFFu : 0u)
++RECOMP_XMM_BITWISE(XMM_CMP_ORD, (isnan(a.f[i]) || isnan(b.f[i])) ? 0u : 0xFFFFFFFFu)
++
+ 
+ /** movmskps: the four lane sign bits, packed into the low nibble. */
+ static inline uint32_t XMM_MOVEMASK(RecompXmm a) {
+--- a/tools/recomp/test_packed_compare_execution.py
++++ b/tools/recomp/test_packed_compare_execution.py
+@@ -0,0 +1,35 @@
++"""Packed comparisons used by collision bounds, including unordered lanes."""
++import pathlib
++import subprocess
++import tempfile
++import unittest
++from .test_lifter_sse import _insn, _xmm, _mem
++from .lifter import Lifter
++
++class PackedCompareExecutionTest(unittest.TestCase):
++    def test_masks_aliases_and_memory(self):
++        header=(pathlib.Path(__file__).resolve().parents[2]/'templates/runtime/recomp_types.h').read_text()
++        helpers=header[header.index('#define RECOMP_XMM_BITWISE'):header.index('/** movmskps:')]
++        masks={'cmpnltps':[0,1,1,1],'cmpnleps':[0,0,1,0],
++               'cmpunordps':[0,0,1,0],'cmpordps':[1,1,0,1]}
++        for op,mask in masks.items():
++            for memory in (False,True):
++                lifted='\n'.join(Lifter().lift_instruction(_insn(op,'',[_xmm('xmm0'),_mem('eax') if memory else _xmm('xmm1')])))
++                source='''#include <math.h>
++#include <stdint.h>
++#include <assert.h>
++typedef union { float f[4]; uint32_t u[4]; } RecompXmm;
++#define XMM_MEM(a) (*(RecompXmm *)(a))
++'''+helpers+'''
++int main(void) {
++ RecompXmm xmm0={{-1,2,NAN,INFINITY}},xmm1={{0,2,1,INFINITY}};
++ void *eax=&xmm1;
++'''+lifted+'\nuint32_t expected[4]={'+','.join('UINT32_MAX' if x else '0' for x in mask)+'};\n'+'''
++ for(int i=0;i<4;i++)assert(xmm0.u[i]==expected[i]);
++ return 0;
++}
++'''
++                with self.subTest(op=op,memory=memory),tempfile.TemporaryDirectory() as d:
++                    p=pathlib.Path(d);(p/'case.c').write_text(source)
++                    subprocess.run(['cc',str(p/'case.c'),'-lm','-o',str(p/'case')],check=True)
++                    subprocess.run([str(p/'case')],check=True)

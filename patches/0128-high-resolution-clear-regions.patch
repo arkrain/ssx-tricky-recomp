@@ -1,0 +1,18 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -618,6 +618,7 @@
+                 for (x = x0; x < x1; ++x)
+                     row[x] = (row[x] & ~mask) | (s_gpu.depth_clear & mask);
+             }
++            ssx_gl_clear_surface(mem+base,s_gpu.depth_pitch,1,x0,y0,x1,y1,s_gpu.depth_clear,mask);
+         }
+     }
+     if (!(param & NV097_CLEAR_COLOR_MASK))
+@@ -657,6 +658,7 @@
+                 p[x] = (p[x]&~mask16)|(v&mask16);
+         }
+     }
++    if(bpp==4)ssx_gl_clear_surface(mem+s_gpu.color_base,s_gpu.pitch,0,x0,y0,x1,y1,s_gpu.clear_color,mask);
+     s_gpu.clears++;
+     /* Progress markers, interleaved with everything else in the log. The
+      * summary says drawing stopped; only a marker next to the surrounding

@@ -1,0 +1,28 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1672,15 +1672,19 @@
+ }
+ static const float (*fetch_shader_vertex_inputs(uint32_t index))[4]
+ {
+-    /* The shader reads this bank without modifying it. Every consumed input
+-     * is refreshed for each vertex; unconsumed lanes stay exactly zero.
+-     * Build the sparse attribute list and clear those unused lanes once per
+-     * batch instead of clearing/scanning all 16 attributes at every miss. */
++    /* The shader reads this bank without modifying it. Broadcast and disabled
++     * attributes are immutable within a batch, so populate them once and
++     * refresh only varying inputs for each vertex. Unconsumed lanes remain
++     * exactly zero; a new generation refreshes all constants and defaults. */
+     if(s_shader_input_generation!=s_vertex_generation) {
+         memset(s_shader_inputs,0,sizeof s_shader_inputs);
+         s_shader_input_count=0;
+-        for(unsigned a=0;a<16;a++)if(s_vertex_inputs&(1u<<a))
+-            s_shader_input_indices[s_shader_input_count++]=a;
++        for(unsigned a=0;a<16;a++)if(s_vertex_inputs&(1u<<a)) {
++            if(s_gpu.attr[a].stride && s_gpu.attr[a].size)
++                s_shader_input_indices[s_shader_input_count++]=a;
++            else
++                fetch_vertex_input(a,index,s_shader_inputs[a]);
++        }
+         s_shader_input_generation=s_vertex_generation;
+     }
+     for(unsigned i=0;i<s_shader_input_count;i++) {

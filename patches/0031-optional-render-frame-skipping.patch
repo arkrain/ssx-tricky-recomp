@@ -1,0 +1,30 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -522,8 +522,19 @@
+                             const float c[4], uint32_t argb,
+                             const float uv[3][2]);
+ 
++/* Opt-in software-renderer bring-up mode. Guest logic and all command state
++ * still run; only complete clear/draw frame groups are decimated. */
++static unsigned s_render_every, s_render_frame;
++static int s_skip_frame;
+ static void clear_surface(uint32_t param)
+ {
++    if (!s_render_every) {
++        const char *option=getenv("RECOMP_RENDER_EVERY");
++        unsigned value=option?(unsigned)strtoul(option,NULL,10):1;
++        s_render_every=value>=1 && value<=120 ? value : 1;
++    }
++    if (param & NV097_CLEAR_COLOR_MASK) s_skip_frame=(s_render_frame++ % s_render_every)!=0;
++    if (s_skip_frame) return;
+     uint8_t *mem = (uint8_t *)xbox_GetMemoryOffset();
+     uint32_t bpp = surface_bpp();
+     uint32_t y, x;
+@@ -1346,6 +1357,7 @@
+ 
+ static void raster_batch(void)
+ {
++    if (s_skip_frame) return;
+     if (getenv("SSX_COMBINER_TRACE")) {
+         static unsigned count; static uint32_t hashes[32];
+         uint32_t h=s_render_reg[0x1e60/4];

@@ -1,0 +1,163 @@
+--- a/src/usb/ohci.c
++++ b/src/usb/ohci.c
+@@ -118,6 +118,7 @@
+     uint32_t base;                      /* Xbox VA of the register block   */
+     uint32_t reg[OHCI_REG_MAX / 4];
+     unsigned reads, writes, decode_fail;
++    volatile LONG irq_ack_generation;
+     int      index;
+ } OhciController;
+ 
+@@ -200,6 +201,7 @@
+ 
+     case HcInterruptStatus:
+         *r &= ~v;                       /* write 1 to clear                 */
++        InterlockedIncrement(&hc->irq_ack_generation);
+         return;
+ 
+     case HcInterruptEnable:
+@@ -352,7 +354,8 @@
+     uint32_t info = rd32(td);
+     uint32_t cbp  = rd32(td + 4);
+     uint32_t be   = rd32(td + 12);
+-    uint32_t dp   = (info >> 19) & 3u;
++    uint32_t direction = (ed0 >> 11) & 3u;
++    uint32_t dp = direction == 1 || direction == 2 ? direction : (info >> 19) & 3u;
+     int      len  = (cbp && be >= cbp) ? (int)(be - cbp + 1) : 0;
+     uint32_t endpoint = (ed0 >> 7) & 0xFu;
+     int      moved = 0;
+@@ -433,10 +436,10 @@
+ }
+ 
+ /* Walk the control list once. Returns 1 if anything completed. */
+-static int ohci_run_control_list(OhciController *hc)
+-{
+-    uint32_t ed = hc->reg[HcControlHeadED / 4] & ED_PTR_MASK;
+-    uint32_t done_head = 0;
++static int ohci_run_list(OhciController *hc, uint32_t ed)
++{
++    ed &= ED_PTR_MASK;
++    uint32_t done_head = rd32(hc->reg[HcHCCA / 4] + HCCA_DONE_HEAD) & ED_PTR_MASK;
+     int completed = 0, guard = 0;
+ 
+     while (ed && guest_ok(ed, 16) && ++guard < 64) {
+@@ -479,6 +482,17 @@
+         hc->reg[HcInterruptStatus / 4] |= INTR_WDH;
+     }
+     return completed;
++}
++
++static int ohci_run_control_list(OhciController *hc)
++{
++    return ohci_run_list(hc, hc->reg[HcControlHeadED / 4]);
++}
++static int ohci_run_periodic_list(OhciController *hc)
++{
++    uint32_t slot = hc->reg[HcFmNumber / 4] & 31;
++    uint32_t hcca = hc->reg[HcHCCA / 4];
++    return guest_ok(hcca,256) ? ohci_run_list(hc,rd32(hcca + 4*slot)) : 0;
+ }
+ 
+ /* ---- raising an interrupt --------------------------------------------- */
+@@ -638,6 +652,7 @@
+     unsigned waited = 0;
+     int plugged = 0;
+     uint32_t last_status = 0;
++    LONG last_ack = 0;
+     unsigned repeats = 0;
+ 
+     (void)unused;
+@@ -656,14 +671,14 @@
+         OhciController *hc = &s_hc[0];
+         uint32_t control, enable, status;
+ 
+-        Sleep(20);
++        Sleep(1);
+         control = hc->reg[HcControl / 4];
+         enable  = hc->reg[HcInterruptEnable / 4];
+ 
+         /* Operational is HCFS == 10b in bits 7:6. Interrupting a controller
+          * the driver has not started yet is not a test of anything. */
+         if ((control & 0xC0u) != 0x80u) {
+-            if (++waited > 1500)              /* 30 s and it never started */
++            if (++waited > 30000)              /* 30 s and it never started */
+                 break;
+             continue;
+         }
+@@ -680,13 +695,13 @@
+             hc->reg[HcInterruptStatus / 4] |= INTR_RHSC;
+             plugged = 1;
+             fprintf(stderr, "  [OHCI0] operational after %u ms; device "
+-                            "arriving on port 1\n", waited * 20);
++                            "arriving on port 1\n", waited);
+             fflush(stderr);
+         }
+ 
+         /* Advance both frame counters together. The guest uses HCCA when
+          * waiting for endpoint removal to become safe, not just HcFmNumber. */
+-        uint16_t frame = (uint16_t)(hc->reg[HcFmNumber / 4] + 20);
++        uint16_t frame = (uint16_t)(hc->reg[HcFmNumber / 4] + 1);
+         hc->reg[HcFmNumber / 4] = frame;
+         uint8_t *hcca_frame = guest_ptr(hc->reg[HcHCCA / 4] + 0x80, 2);
+         if (hcca_frame) memcpy(hcca_frame, &frame, 2);
+@@ -697,11 +712,16 @@
+          * on it. Walking on the tick rather than only when CLF is written
+          * costs a read of a guest dword and means a descriptor queued without
+          * rewriting CLF is still moved -- which is legal, and drivers do it. */
+-        if ((control & 0x10u)
++        if ((control & 0x10u) && !(hc->reg[HcInterruptStatus / 4] & INTR_WDH)
+          && guest_ok(hc->reg[HcControlHeadED / 4] & ED_PTR_MASK, 16)) {
+             if (ohci_run_control_list(hc))
+                 hc->reg[HcCommandStatus / 4] &= ~0x02u;   /* CLF consumed */
+         }
++
++        /* Periodic interrupt endpoints carry the controller reports. Wait
++         * for acknowledgement before publishing another completion batch. */
++        if ((control & 4u) && !(hc->reg[HcInterruptStatus / 4] & INTR_WDH))
++            ohci_run_periodic_list(hc);
+ 
+         /* Level-triggered, which is what OHCI is: while an enabled source is
+          * set, the line is asserted. The handler clears the status bit, so
+@@ -714,6 +734,8 @@
+         /* A stuck source is one the handler never clears, which shows up as
+          * the same status delivered over and over. Counting deliveries alone
+          * would trip on a device that is simply busy. */
++        LONG ack = InterlockedCompareExchange(&hc->irq_ack_generation,0,0);
++        if (ack != last_ack) { repeats=0; last_status=0; last_ack=ack; }
+         if (status == last_status) {
+             if (++repeats > 200) {
+                 fprintf(stderr, "  [OHCI0] status %08X delivered 200 times "
+--- a/src/usb/usb_gamepad.c
++++ b/src/usb/usb_gamepad.c
+@@ -130,8 +130,29 @@
+         }
+     }
+ 
+-    /* Class requests. The Xbox pad answers a vendor-defined capabilities
+-     * request on the interface; anything else is not ours to guess at. */
++    /* XID wire fields: descriptor 0x42, gamepad type 1 / Controller S subtype 2.
++     * Protocol reference: https://github.com/xemu-project/xemu/blob/master/hw/xbox/xid.h
++     * These are device protocol values, not an imported implementation. */
++    if (setup->bmRequestType == 0xc1 && setup->wIndex == 0) {
++        if (setup->bRequest == 6 && setup->wValue == 0x4200) {
++            const uint8_t xid[16] = {16,0x42,0,1,1,2,20,6,
++                                    255,255,255,255,255,255,255,255};
++            return copy_out(out,max,xid,sizeof xid,setup->wLength);
++        }
++        if (setup->bRequest == 1 &&
++            (setup->wValue == 0x0100 || setup->wValue == 0x0200)) {
++            uint8_t caps[20];
++            int length = setup->wValue == 0x0100 ? 20 : 6;
++            memset(caps,255,sizeof caps); caps[0]=0; caps[1]=(uint8_t)length;
++            return copy_out(out,max,caps,length,setup->wLength);
++        }
++    }
++    if (setup->bmRequestType == 0xa1 && setup->bRequest == 1 &&
++        setup->wValue == 0x0100 && setup->wIndex == 0) {
++        uint8_t report[20];
++        int length = usb_gamepad_report(report,sizeof report);
++        return copy_out(out,max,report,length,setup->wLength);
++    }
+     return -1;
+ }
+ 

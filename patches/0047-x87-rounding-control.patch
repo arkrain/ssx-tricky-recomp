@@ -1,0 +1,129 @@
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -264,21 +264,29 @@
+  * followed by `test ah, 0x44; jp` is how this era's CRT asks "is this a NaN",
+  * and collapsing it to "equal" answers no every time. */
+ #define RECOMP_FCMP(a, b)     (((a) != (a) || (b) != (b)) ? 2 : (a) < (b) ? -1 : (a) > (b) ? 1 : 0)
+-/* x87 integer stores use the guest RC bits, independently of host rounding.
+- * Masked invalid conversions store the signed integer-indefinite value. */
+-static inline int64_t recomp_fist(double value, uint16_t control, unsigned bits) {
++/* x87 rounding follows the guest RC field, independently of host rounding.
++ * Preserve signed zero and non-finite values for FRNDINT. */
++static inline double recomp_frndint(double value, uint16_t control) {
++    if (!isfinite(value) || value == 0.0) return value;
+     double rounded;
+-    switch((control>>10)&3) {
+-    case 1: rounded=floor(value); break;
+-    case 2: rounded=ceil(value); break;
+-    case 3: rounded=trunc(value); break;
++    switch ((control >> 10) & 3) {
++    case 1: rounded = floor(value); break;
++    case 2: rounded = ceil(value); break;
++    case 3: rounded = trunc(value); break;
+     default: {
+-        double lo=floor(value), fraction=value-lo;
+-        rounded=lo;
+-        if(fraction>0.5 || (fraction==0.5 && fmod(lo,2.0)!=0.0)) rounded=lo+1.0;
++        double lo = floor(value), fraction = value - lo;
++        rounded = lo;
++        if (fraction > 0.5 || (fraction == 0.5 && fmod(lo, 2.0) != 0.0))
++            rounded = lo + 1.0;
+         break;
+     }
+     }
++    return rounded == 0.0 ? copysign(0.0, value) : rounded;
++}
++
++/* Masked invalid integer conversions store the signed indefinite value. */
++static inline int64_t recomp_fist(double value, uint16_t control, unsigned bits) {
++    double rounded = recomp_frndint(value, control);
+     double limit=ldexp(1.0,(int)bits-1);
+     if(!isfinite(rounded) || rounded < -limit || rounded >= limit)
+         return bits==64?INT64_MIN:-(INT64_C(1)<<(bits-1));
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -3137,7 +3137,7 @@
+         if m == "fscale":
+             return [f"fp_top() = ldexp(fp_top(), (int)fp_st1()); /* fscale */"]
+         if m == "frndint":
+-            return [f"fp_top() = rint(fp_top()); /* frndint */"]
++            return [f"fp_top() = recomp_frndint(fp_top(), g_fp_control_word); /* frndint */"]
+         if m == "fldpi":
+             return [f"fp_push(3.14159265358979323846); /* fldpi */"]
+         if m == "fldl2e":
+--- a/tools/recomp/test_round_execution.py
++++ b/tools/recomp/test_round_execution.py
+@@ -0,0 +1,62 @@
++"""Check FRNDINT against hardware for every guest rounding mode."""
++import pathlib
++import re
++import subprocess
++import tempfile
++import unittest
++from .disasm import Instruction
++from .lifter import Lifter
++
++class RoundExecutionTest(unittest.TestCase):
++    def test_guest_rounding(self):
++        header = (pathlib.Path(__file__).resolve().parents[2] / 'templates/runtime/recomp_types.h').read_text()
++        helper = re.search(r'static inline double recomp_frndint\(.*?\n}', header, re.S).group()
++        instruction = '\n'.join(Lifter().lift_instruction(Instruction(0, 2, 'frndint', '', '')))
++        self.assertIn('g_fp_control_word', instruction)
++        source = r'''
++#include <assert.h>
++#include <stdint.h>
++#include <math.h>
++#include <string.h>
++#include <fenv.h>
++''' + helper + r'''
++static double value;
++static uint16_t g_fp_control_word;
++#define fp_top() value
++static void run(void) {
++''' + instruction + r'''
++}
++int main(void) {
++ const double cases[] = {0,-0.0,.1,-.1,.5,-.5,1.5,-1.5,2.5,-2.5,
++    3.9,-3.9,0x1p-1074,-0x1p-1074,0x1p52,0x1p53,INFINITY,-INFINITY,NAN};
++ const int host_modes[] = {FE_TONEAREST,FE_DOWNWARD,FE_UPWARD,FE_TOWARDZERO};
++ for(unsigned h=0;h<4;h++) {
++  assert(fesetround(host_modes[h])==0);
++  for(unsigned mode=0;mode<4;mode++) for(unsigned i=0;i<sizeof(cases)/sizeof(*cases);i++) {
++   double input=cases[i],expected;
++   g_fp_control_word=0x37f|(mode<<10);
++#if defined(__i386__) || defined(__x86_64__)
++   uint16_t saved;
++   __asm__ volatile("fnstcw %0" : "=m"(saved));
++   __asm__ volatile("fldcw %2; fldl %1; frndint; fstpl %0; fldcw %3"
++       : "=m"(expected) : "m"(input), "m"(g_fp_control_word), "m"(saved));
++#else
++   switch(mode) {
++    case 1:expected=floor(input);break;
++    case 2:expected=ceil(input);break;
++    case 3:expected=trunc(input);break;
++    default: fesetround(FE_TONEAREST);expected=nearbyint(input);fesetround(host_modes[h]);break;
++   }
++#endif
++   value=input;run();
++   assert(isnan(expected)?isnan(value):memcmp(&expected,&value,sizeof(value))==0);
++  }
++ }
++ return 0;
++}
++'''
++        with tempfile.TemporaryDirectory() as folder:
++            path = pathlib.Path(folder)
++            (path/'case.c').write_text(source)
++            subprocess.run(['cc','-frounding-math',str(path/'case.c'),'-lm','-o',str(path/'case')],check=True)
++            subprocess.run([str(path/'case')],check=True)
+--- a/tools/recomp/test_lifter_fpu_reverse.py
++++ b/tools/recomp/test_lifter_fpu_reverse.py
+@@ -67,7 +67,7 @@
+             ("fpatan", "atan2(fp_st1(), fp_top())"),
+             ("fsin", "sin(fp_top())"),
+             ("fcos", "cos(fp_top())"),
+-            ("frndint", "rint(fp_top())"),
++            ("frndint", "recomp_frndint(fp_top(), g_fp_control_word)"),
+             ("fyl2x", "log2(fp_top())"),
+         ):
+             with self.subTest(mnemonic=mnemonic):

@@ -1,0 +1,133 @@
+--- a/src/usb/ohci.c
++++ b/src/usb/ohci.c
+@@ -7,6 +7,7 @@
+  * that decides how the rest gets built.
+  */
+ #include "ohci.h"
++#include "../kernel/kernel.h"
+ #include "../platform/mmio_decode.h"
+ #include "../kernel/xbox_memory_layout.h"
+ #include "usb_gamepad.h"
+@@ -140,14 +141,8 @@
+ 
+     hc->reads++;
+ 
+-    /* HcFmRemaining and HcFmNumber advance on their own. A driver that waits
+-     * for the frame counter to move is waiting for the controller to be
+-     * running, and a counter that never changes is a controller that is not.
+-     * Derived from the read count rather than a timer: it only has to be
+-     * monotonic, and a timer here would need a thread to be worth having. */
+-    if (aligned == HcFmNumber)
+-        v = (hc->reads >> 3) & 0xFFFFu;
+-    else if (aligned == HcFmRemaining)
++    /* Frame number is advanced by the bus thread and mirrored into HCCA. */
++    if (aligned == HcFmRemaining)
+         v = (hc->reads * 977u) & 0x3FFFu;
+ 
+     /* Sub-dword reads take their slice of the containing register. */
+@@ -323,27 +318,29 @@
+  */
+ static int guest_ok(uint32_t va, uint32_t bytes)
+ {
+-    size_t mapped = xbox_GetMappedSize();
+-    return va != 0 && mapped != 0
+-        && (uint64_t)va + bytes <= (uint64_t)mapped;
+-}
+-
++    uint64_t end = (uint64_t)va + bytes;
++    if (va < xbox_ContiguousAllocatedBytes())
++        return end <= xbox_ContiguousAllocatedBytes();
++    return va != 0 && end <= xbox_GetMappedSize();
++}
++static uint8_t *guest_ptr(uint32_t va, uint32_t bytes)
++{
++    if (!guest_ok(va, bytes)) return NULL;
++    uintptr_t address = va;
++    if (va < xbox_ContiguousAllocatedBytes()) address += XBOX_CONTIG_BASE;
++    return (uint8_t *)((uintptr_t)xbox_GetMemoryOffset() + address);
++}
+ static uint32_t rd32(uint32_t va)
+ {
+-    if (!guest_ok(va, 4))
+-        return 0;
+-    return *(uint32_t *)((uint8_t *)xbox_GetMemoryOffset() + va);
+-}
+-static void wr32(uint32_t va, uint32_t v)
+-{
+-    if (!guest_ok(va, 4))
+-        return;
+-    *(uint32_t *)((uint8_t *)xbox_GetMemoryOffset() + va) = v;
+-}
+-static uint8_t *guest_ptr(uint32_t va, uint32_t bytes)
+-{
+-    return guest_ok(va, bytes)
+-         ? (uint8_t *)xbox_GetMemoryOffset() + va : NULL;
++    uint32_t value = 0;
++    uint8_t *p = guest_ptr(va, 4);
++    if (p) memcpy(&value, p, 4);
++    return value;
++}
++static void wr32(uint32_t va, uint32_t value)
++{
++    uint8_t *p = guest_ptr(va, 4);
++    if (p) memcpy(p, &value, 4);
+ }
+ 
+ /* Move one transfer descriptor. Returns the condition code to report. */
+@@ -357,6 +354,12 @@
+     uint32_t endpoint = (ed0 >> 7) & 0xFu;
+     int      moved = 0;
+ 
++    if (s_trace) {
++        static unsigned td_traces;
++        if (td_traces++ < 64)
++            fprintf(stderr, "  [OHCI%d] TD %08X info=%08X cbp=%08X be=%08X dp=%u\n",
++                    hc->index, td, info, cbp, be, dp);
++    }
+     if (dp == TD_DP_SETUP) {
+         /* Eight bytes of setup, kept for the data stage that follows. */
+         if (len >= 8) {
+@@ -428,7 +431,7 @@
+     uint32_t done_head = 0;
+     int completed = 0, guard = 0;
+ 
+-    while (guest_ok(ed, 16) && ++guard < 64) {
++    while (ed && guest_ok(ed, 16) && ++guard < 64) {
+         uint32_t ed0  = rd32(ed);
+         uint32_t tail = rd32(ed + 4) & ED_PTR_MASK;
+         uint32_t head = rd32(ed + 8);
+@@ -462,7 +465,7 @@
+ 
+     if (completed) {
+         uint32_t hcca = hc->reg[HcHCCA / 4];
+-        if (hcca)
++        if (guest_ok(hcca, 256))
+             wr32(hcca + HCCA_DONE_HEAD, done_head);
+         hc->reg[HcDoneHead / 4] = done_head;
+         hc->reg[HcInterruptStatus / 4] |= INTR_WDH;
+@@ -673,6 +676,14 @@
+             fflush(stderr);
+         }
+ 
++        /* Advance both frame counters together. The guest uses HCCA when
++         * waiting for endpoint removal to become safe, not just HcFmNumber. */
++        uint16_t frame = (uint16_t)(hc->reg[HcFmNumber / 4] + 20);
++        hc->reg[HcFmNumber / 4] = frame;
++        uint8_t *hcca_frame = guest_ptr(hc->reg[HcHCCA / 4] + 0x80, 2);
++        if (hcca_frame) memcpy(hcca_frame, &frame, 2);
++        hc->reg[HcInterruptStatus / 4] |= INTR_SF;
++
+         /* Be the bus master. ControlListEnable in HcControl says the driver
+          * wants the list walked; ControlListFilled says it has put something
+          * on it. Walking on the tick rather than only when CLF is written
+@@ -707,6 +718,10 @@
+             repeats = 0;
+         }
+         ohci_raise(hc, status);
++        if (!(hc->reg[HcInterruptStatus / 4] & status)) {
++            last_status = 0;
++            repeats = 0;
++        }
+     }
+     return 0;
+ }

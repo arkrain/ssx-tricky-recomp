@@ -1,0 +1,81 @@
+--- a/tools/recomp/translator.py
++++ b/tools/recomp/translator.py
+@@ -31,7 +31,8 @@
+ 
+     CMP/TEST save their operands into function-local _fa/_fb/_fas/_fbs at
+     runtime. A shared consumer can use whichever predecessor executed. Keep
+-    operation and width equal because sign/parity handling depends on them;
++    operation and width equal for full comparison state; different widths
++    retain only the explicitly captured zero flag because sign/parity depend on them;
+     arithmetic states still reconstruct operands and cannot use this merge.
+     """
+     if not states or any(not state or not state[0] for state in states):
+@@ -46,12 +47,13 @@
+     if first[0] not in ("cmp", "test") or len(first[1]) != 2:
+         return None
+     width = _operand_width(first[1][0]) or _operand_width(first[1][1])
++    mixed_width = False
+     for kind, ops in states[1:]:
+         if kind != first[0] or len(ops) != 2:
+             return None
+         if (_operand_width(ops[0]) or _operand_width(ops[1])) != width:
+-            return None
+-    return first
++            mixed_width = True
++    return ("zero_snapshot", []) if mixed_width else first
+ 
+ 
+ def write_if_changed(path, text):
+--- a/tools/recomp/test_flag_join.py
++++ b/tools/recomp/test_flag_join.py
+@@ -33,10 +33,10 @@
+     b = Operand(type='reg', reg='edx')
+     assert _merge_flag_states([('cmp', [a, b]), ('test', [a, b])]) == ('zero_snapshot', [])
+ 
+-def test_mixed_widths_are_not_guessed():
++def test_mixed_widths_preserve_only_zero():
+     wide = [Operand(type='reg', reg='eax'), Operand(type='reg', reg='edx')]
+     narrow = [Operand(type='reg', reg='al'), Operand(type='reg', reg='dl')]
+-    assert _merge_flag_states([('cmp', wide), ('cmp', narrow)]) is None
++    assert _merge_flag_states([('cmp', wide), ('cmp', narrow)]) == ('zero_snapshot', [])
+ 
+ 
+ def test_mixed_cmp_test_join_compiled(tmp_path):
+@@ -76,3 +76,37 @@
+     result = subprocess.run([cc, str(source), '-o', str(exe)], capture_output=True, text=True)
+     assert result.returncode == 0, result.stderr
+     subprocess.run([str(exe)], check=True)
++
++
++def test_mixed_width_test_join_compiled(tmp_path):
++    """MU presence joins TEST AL,1 and TEST EAX,0x10000 before JE."""
++    import subprocess
++    image = bytes.fromhex('85c97404a801eb05a900000100'
++                          '7406b800000000c3b801000000c3')
++    config._install([config.Section('.text', BASE, len(image), 0, len(image), True)],
++                    entry_point=BASE, kernel_thunk_addr=BASE, origin='mixed-width-flags')
++    db = {BASE: {'start': hex(BASE), 'end': BASE + len(image),
++                 '_addr': BASE, 'size': len(image)}}
++    generated = FunctionTranslator(image, db).translate_function(BASE, db[BASE])
++    assert 'if (_zf)' in generated, generated
++    source = tmp_path / 'join.c'
++    source.write_text("""#include <stdint.h>
++static uint32_t eax,ecx,esp;
++#define LO8(x) ((uint8_t)(x))
++#define TEST_Z(a,b) (((a)&(b))==0)
++""" + generated + """
++int main(void) {
++    const uint32_t values[] = {0,1,2,0x10000u,0x10001u,0x80000000u,0xffffffffu};
++    for (unsigned path=0;path<2;path++)
++      for (unsigned a=0;a<sizeof(values)/sizeof(values[0]);a++) {
++        eax=values[a]; ecx=path; esp=1024;
++        unsigned expected=(eax & (path ? 1 : 0x10000u))==0;
++        sub_00010000();
++        if (eax!=expected || esp!=1028) return 1;
++      }
++    return 0;
++}
++""")
++    exe = tmp_path / 'join'
++    subprocess.run(['/usr/bin/gcc', str(source), '-o', str(exe)], check=True)
++    subprocess.run([str(exe)], check=True)

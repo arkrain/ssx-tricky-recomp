@@ -1,0 +1,16 @@
+--- a/src/apu/apu_vp.c
++++ b/src/apu/apu_vp.c
+@@ -1268,6 +1268,13 @@
+             }
+ 
+             uint16_t v = (uint16_t)d->regs[current];
++            /* The guest locks a voice while sampling/updating its RAM state.
++             * Keep its cursor stable and release the APU mutex so the FE can
++             * unlock it. Skipping the voice would insert silence instead. */
++            while (is_voice_locked(d, v) && !d->pause_requested &&
++                   !qatomic_read(&d->exiting))
++                qemu_cond_wait(&d->cond, &d->lock);
++            if (d->pause_requested || qatomic_read(&d->exiting)) return;
+             d->regs[next] = voice_get_mask(d, v, NV_PAVS_VOICE_TAR_PITCH_LINK,
+                                NV_PAVS_VOICE_TAR_PITCH_LINK_NEXT_VOICE_HANDLE);
+ 

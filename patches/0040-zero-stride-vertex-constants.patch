@@ -1,0 +1,13 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -376,7 +376,9 @@
+ 
+     out[0] = out[1] = out[2] = 0.0f;
+     out[3] = 1.0f;
+-    if (!a->size || !a->stride)
++    /* A nonempty array with zero stride broadcasts one element. SSX uses
++     * these arrays for per-draw transform rows and material constants. */
++    if (!a->size)
+         return 0;
+     if (s_gpu.inline_active) {
+         /* The batch arrived as INLINE_ARRAY, so `offset` is a byte offset into

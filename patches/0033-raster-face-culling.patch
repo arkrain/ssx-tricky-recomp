@@ -1,0 +1,22 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1054,9 +1054,18 @@
+         return;
+ 
+     area = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+-    if (area == 0.0f)
++    if (!isfinite(area) || area == 0.0f)
+         return;                            /* degenerate */
+ 
++    /* NV097 winding uses the numerical window-coordinate orientation.
++     * Presentation with Y down does not reverse the front-face predicate. */
++    if (s_render_reg[0x308/4]) {
++        int front = s_render_reg[0x3a0/4] == 0x900 ? area < 0 : area > 0;
++        uint32_t face = s_render_reg[0x39c/4];
++        if (face == 0x408 || (face == 0x404 && front) ||
++            (face == 0x405 && !front)) return;
++    }
++
+     /* Where this batch writes. The same check the per-pixel path made, made
+      * once: a surface address landing on the title's own image is no safer
+      * one pixel at a time than 4.9 MB at once. */

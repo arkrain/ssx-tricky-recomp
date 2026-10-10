@@ -1,0 +1,73 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -988,6 +988,16 @@
+     }
+ }
+ 
++/* Depth rejection can precede texture/shader work: combiners cannot modify
++ * depth. Depth writes remain after alpha testing in fragment(). */
++static int depth_passes(uint8_t *mem,int x,int y,float z) {
++    if (!s_gpu.depth_enable || !s_gpu.depth_offset || !s_gpu.depth_pitch) return 1;
++    uint32_t base=dma_resolve(s_gpu.depth_offset);
++    if (surface_hits_image(base,(s_gpu.clip_y+s_gpu.clip_h)*s_gpu.depth_pitch)) return 0;
++    uint32_t depth=*(uint32_t *)(mem+base+y*s_gpu.depth_pitch+x*4);
++    return isfinite(z) && comparison(s_gpu.depth_func,z,depth>>8);
++}
++
+ static void fragment(uint8_t *mem, uint32_t bpp, int x, int y, float z, uint32_t argb)
+ {
+     if (s_gpu.alpha_enable && !comparison(s_gpu.alpha_func, argb >> 24, s_gpu.alpha_ref & 255)) return;
+@@ -1063,8 +1073,9 @@
+                || (w0 <= 0 && w1 <= 0 && w2 <= 0)))
+                 continue;
+             float z = (w1 * a[2] + w2 * b[2] + w0 * c[2]) / area;
++            if (!depth_passes(mem,x,y,z)) continue;
+             uint32_t texel=0xff000000;
+-            if (textured) {
++            if (textured && !(s_triangle_colors && (s_render_reg[0x1e60/4]&15))) {
+                 /* Shader positions are screen-space but w retains clip w.
+                  * Interpolate u/w and v/w, then divide by interpolated 1/w. */
+                 float q0 = a[3] != 0 ? w1 / a[3] : 0;
+@@ -1281,6 +1292,10 @@
+  * a batch whose texcoords cannot be read is drawn untextured rather than not
+  * at all, so a missing coordinate stream costs the colour and not the shape.
+  */
++/* Indexed triangles share vertices. State is immutable within raster_batch;
++ * invalidate the cache at every batch, including failed/empty batches. */
++static struct { uint32_t index, generation; float out[13][4]; } s_vertex_cache[256];
++static uint32_t s_vertex_generation;
+ static void raster_indexed(uint32_t i0, uint32_t i1, uint32_t i2, uint32_t argb)
+ {
+     float p[3][4], uv[3][2];
+@@ -1290,11 +1305,18 @@
+     if (ssx_vertex_active()) {
+         uint32_t indices[3] = {i0, i1, i2};
+         for (int v = 0; v < 3; ++v) {
+-            float in[16][4], out[13][4];
+-            for (int a = 0; a < 16; ++a)
+-                if (!fetch_attr(&s_gpu.attr[a], indices[v], in[a]))
+-                    memcpy(in[a], s_gpu.imm_attr[a], sizeof(in[a]));
+-            if (!ssx_vertex_execute(in, out)) return;
++            unsigned slot=indices[v]&255;
++            float (*out)[4]=s_vertex_cache[slot].out;
++            if (s_vertex_cache[slot].generation!=s_vertex_generation ||
++                s_vertex_cache[slot].index!=indices[v]) {
++                float in[16][4];
++                for (int a = 0; a < 16; ++a)
++                    if (!fetch_attr(&s_gpu.attr[a], indices[v], in[a]))
++                        memcpy(in[a], s_gpu.imm_attr[a], sizeof(in[a]));
++                if (!ssx_vertex_execute(in, out)) return;
++                s_vertex_cache[slot].index=indices[v];
++                s_vertex_cache[slot].generation=s_vertex_generation;
++            }
+             memcpy(p[v], out[0], sizeof(p[v]));
+             memcpy(s_triangle_color[v][0],out[3],16);
+             memcpy(s_triangle_color[v][1],out[4],16);
+@@ -1338,6 +1360,7 @@
+         }
+     }
+ 
++    if (++s_vertex_generation==0) { memset(s_vertex_cache,0,sizeof s_vertex_cache);s_vertex_generation=1; }
+     prepare_textures();
+     uint32_t i;
+     uint32_t before = s_gpu.tris_drawn;

@@ -1,0 +1,28 @@
+diff --git a/src/kernel/nv2a_pb_exec.c b/src/kernel/nv2a_pb_exec.c
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1700,12 +1700,20 @@
+     }
+     for(unsigned i=0;i<s_shader_input_count;i++) {
+         unsigned a=s_shader_input_indices[i];
+-        /* Varying float4 arrays need no default lanes or format conversion.
+-         * Keep inline bounds checks and every other format on the decoder. */
++        /* Varying float arrays copy raw bits; short vectors retain the
++         * decoder's default zero lanes and w=1. Inline arrays and other
++         * formats keep their bounds checks and existing decoder behavior. */
+         const VertexAttr *attr=&s_gpu.attr[a];
+-        if(!s_gpu.inline_active && attr->type==2 && attr->size==4 && attr->offset) {
++        if(!s_gpu.inline_active && attr->type==2 && attr->size>=1 && attr->size<=4 && attr->offset) {
+             const uint8_t *mem=(const uint8_t *)xbox_GetMemoryOffset();
+-            memcpy(s_shader_inputs[a],mem+attr->offset+(size_t)index*attr->stride,16);
++            const uint8_t *p=mem+attr->offset+(size_t)index*attr->stride;
++            float *out=s_shader_inputs[a];
++            switch(attr->size) {
++            case 1: memcpy(out,p,4);out[1]=out[2]=0;out[3]=1;break;
++            case 2: memcpy(out,p,8);out[2]=0;out[3]=1;break;
++            case 3: memcpy(out,p,12);out[3]=1;break;
++            default:memcpy(out,p,16);break;
++            }
+         } else fetch_vertex_input(a,index,s_shader_inputs[a]);
+     }
+     return (const float (*)[4])s_shader_inputs;

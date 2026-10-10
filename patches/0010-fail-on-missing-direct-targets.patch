@@ -1,0 +1,37 @@
+diff --git a/tools/recomp/translator.py b/tools/recomp/translator.py
+index 48dda04..fb18174 100644
+--- a/tools/recomp/translator.py
++++ b/tools/recomp/translator.py
+@@ -1599,29 +1599,11 @@ class BatchTranslator:
+                 f'#include "{header_name}"',
+                 "",
+             ]
+-            stub_lines.append(
+-                "/* Each stub consumes the return address its caller pushed,")
+-            stub_lines.append(
+-                " * exactly as a real 'ret' would. An empty body leaves esp 4 bytes")
+-            stub_lines.append(
+-                " * low, and the caller then reads every subsequent stack slot off by")
+-            stub_lines.append(
+-                " * one - which surfaces far from here, as corrupted callee-saved")
+-            stub_lines.append(
+-                " * registers or a garbage local. Args are not popped: the callee's")
+-            stub_lines.append(
+-                " * stdcall byte count is read from the target's own bytes where")
+-            stub_lines.append(
+-                " * they end in a `ret N` -- guessing cdecl there silently walks")
+-            stub_lines.append(
+-                " * esp off by N on every call. */")
+-            stub_lines.append("")
++            stub_lines.append("/* Missing code must not silently act as a return. */")
++            stub_lines.append("extern void recomp_direct_call_missing(uint32_t va);")
+             for addr in sorted(unresolved):
+-                popped = self.translator._stub_ret_bytes(addr)
+-                note = (f"ret {popped}" if popped else "not detected")
+                 stub_lines.append(
+-                    f"void {unresolved[addr]}(void) {{ g_esp += {4 + popped}; "
+-                    f"/* 0x{addr:08X}: {note} */ }}"
++                    f"void {unresolved[addr]}(void) {{ recomp_direct_call_missing(0x{addr:08X}u); }}"
+                 )
+             stub_lines.append("")
+ 

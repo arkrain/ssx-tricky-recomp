@@ -1,0 +1,14 @@
+--- a/dsp_dma.c
++++ b/dsp_dma.c
+@@ -212,8 +212,10 @@
+         static uint8_t *scratch_buf = NULL;
+         static ssize_t scratch_buf_size = -1;
+         if (count * item_size > scratch_buf_size) {
++            uint8_t *grown = realloc(scratch_buf, count * item_size);
++            assert(grown != NULL);
++            scratch_buf = grown;
+             scratch_buf_size = count * item_size;
+-            scratch_buf = malloc(scratch_buf_size);
+         }
+ 
+         if (direction) {

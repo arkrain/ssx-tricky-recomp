@@ -1,0 +1,17 @@
+[
+  {
+    "start": "0x00057BF0",
+    "end": "0x000580E9",
+    "reason": "Practice Trick Tutorial aborts at missing original tail57FF3, reached by JE57C92. The full input handler allocates0x100 stack bytes and saves EBP/ESI/EDI; branches57E4E,57FF3,580CC share that frame and the final POP EDI/ESI/EBP; ADD ESP,0x100; RET4 at580DD..580E9. Interior discovered entries have no prologue or independent callers. Preserve the enclosing original handler instead of separate local-label seeds. Original-byte boundary/control-flow evidence: reports/tutorial139-handler-audit.json and direct-target-audit139.json."
+  },
+  {
+    "start": "0x000AD4A0",
+    "end": "0x000AD7D0",
+    "reason": "Observed return-to-menu branch 0xAD5F1 to 0xAD699 after completed Snowdream race. Original routine branches to AD650, AD699, AD69D, AD73F, AD784, AD797 and AD799; all share its EDI/EBX/ESI frame. AD650 and AD73F were false gap-prologue splits. AD7CB is the final tail jump to AC6B0, ending at AD7D0. Preserve the entire enclosing body instead of adding internal entry seeds."
+  },
+  {
+    "start": "0x000A1E90",
+    "end": "0x000A214B",
+    "reason": "Observed indirect switch target A2106 while restoring sound settings in build 88. A20FF dispatches the four-entry table at A214C to A2106, A2116, A2126 and A2144. The first three arms call 9E820/9E8D0/9E930 and share the enclosing EDI/ESI/EBP/EBX stack layout and ret 8. A2116 and A2126 were false gap-prologue boundaries; existing shared entries A2136 and A2144 have no independent callers. Preserve all arms through final ret 8 at A2148; exclude following padding and table."
+  }
+]

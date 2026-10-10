@@ -1,0 +1,101 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -38,6 +38,9 @@
+  * Morton order, not a second one that can disagree with it. */
+ #include "../d3d/d3d8_swizzle.h"
+ #include "nv2a_semaphore.h"
++
++static uint32_t s_zpass_count;
++static int s_zpass_enabled;
+ 
+ static int pb_verbose(void) {
+     static int value=-1;
+@@ -1043,6 +1046,7 @@
+         if (!isfinite(z) || !comparison(s_gpu.depth_func, z, *depth >> 8)) return;
+         if (s_gpu.depth_write) *depth = (*depth & 255) | ((uint32_t)fminf(16777215, fmaxf(0,z)) << 8);
+     }
++    if(s_zpass_enabled)s_zpass_count++;
+     if (s_gpu.blend_enable && bpp == 4) {
+         uint32_t dst = *(uint32_t *)(s_surface + y * s_gpu.pitch + x * 4), mixed = 0;
+         for (int k = 0; k < 4; ++k) {
+@@ -2020,6 +2024,36 @@
+     case 0x0100: /* NV097_NO_OPERATION: nonzero argument requests notification */
+         if (param) queue_gpu_notification(param);
+         break;
++    case 0x01A8: /* Report DMA handle is retained in s_render_reg above. */
++        break;
++    case 0x17C8: /* NV097_CLEAR_REPORT_VALUE: ZPASS_PIXEL_CNT */
++        if(param==1) { s_zpass_count=0;ssx_gl_zpass_clear(); }
++        break;
++    case 0x17CC: /* NV097_SET_ZPASS_PIXEL_COUNT_ENABLE */
++        s_zpass_enabled=param!=0;ssx_gl_zpass_enable(s_zpass_enabled);
++        break;
++    case 0x17D0: { /* NV097_GET_REPORT: 16-byte timestamp/count/completion */
++        if((param>>24)!=1) { note_unhandled(method,param);break; }
++        uintptr_t base=(uintptr_t)xbox_GetMemoryOffset();
++        uint32_t ramht=*(volatile uint32_t *)(base+0xFD002210u);
++        uint8_t *report=nv2a_dma_pointer((const uint8_t *)(base+0xFD700000u),
++            0x100000,ramht,s_render_reg[0x1A8/4],param&0x00ffffffu,16,
++            (uint8_t *)(base+XBOX_CONTIG_BASE),XBOX_CONTIG_SIZE);
++        if(!report) {
++            static unsigned invalid;
++            if(invalid++<8)fprintf(stderr,"[GPU] invalid report DMA=%08x offset=%06x\n",
++                s_render_reg[0x1A8/4],param&0xffffffu);
++            break;
++        }
++        uint32_t count=s_zpass_count+ssx_gl_zpass_result();
++        LARGE_INTEGER ticks,frequency;QueryPerformanceCounter(&ticks);QueryPerformanceFrequency(&frequency);
++        uint64_t timestamp=(uint64_t)(ticks.QuadPart/frequency.QuadPart)*1000000000u+
++            (uint64_t)(ticks.QuadPart%frequency.QuadPart)*1000000000u/(uint64_t)frequency.QuadPart;
++        memcpy(report,&timestamp,8);memcpy(report+8,&count,4);
++        /* Publish completion only after the result and timestamp are visible. */
++        InterlockedExchange((volatile LONG *)(report+12),0);
++        break;
++    }
+     case 0x01A4: /* NV097_SET_CONTEXT_DMA_SEMAPHORE */
+         semaphore_dma = param;
+         break;
+--- a/src/kernel/nv2a_semaphore.h
++++ b/src/kernel/nv2a_semaphore.h
+@@ -5,13 +5,13 @@
+ #include <stddef.h>
+ #include <string.h>
+ static uint32_t sem_u32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
+-static int nv2a_semaphore_write(const uint8_t *ramin, size_t ramin_size,
++static uint8_t *nv2a_dma_pointer(const uint8_t *ramin, size_t ramin_size,
+                               uint32_t ramht, uint32_t handle, uint32_t offset,
+-                              uint32_t value, uint8_t *physical, size_t physical_size)
++                              size_t size, uint8_t *physical, size_t physical_size)
+ {
+     size_t table = ((ramht >> 4) & 0x1f) << 12;
+     size_t bytes = (size_t)4096 << ((ramht >> 16) & 3);
+-    if (!handle || (offset & 3) || table > ramin_size || bytes > ramin_size - table)
++    if (!handle || !size || (offset & 3) || table > ramin_size || bytes > ramin_size - table)
+         return 0;
+     for (size_t i = table; i < table + bytes; i += 8) {
+         uint32_t ctx = sem_u32(ramin + i + 4);
+@@ -28,11 +28,20 @@
+         /* Runtime's contiguous window is the physical memory view. */
+         uint32_t address = ((frame & 0xfffff000u) | (flags >> 20)) & 0x07ffffffu;
+         uint64_t dest = (uint64_t)address + offset;
+-        if ((dest & 3) || limit < 3 || offset > limit - 3 ||
+-            dest > physical_size || 4 > physical_size - dest) return 0;
+-        memcpy(physical + (size_t)dest, &value, 4);
+-        return 1;
++        if ((dest & 3) || (uint64_t)offset + size > (uint64_t)limit + 1 ||
++            dest > physical_size || size > physical_size - dest) return NULL;
++        return physical + (size_t)dest;
+     }
+     return 0;
+ }
++static int nv2a_semaphore_write(const uint8_t *ramin, size_t ramin_size,
++                              uint32_t ramht, uint32_t handle, uint32_t offset,
++                              uint32_t value, uint8_t *physical, size_t physical_size)
++{
++    uint8_t *destination=nv2a_dma_pointer(ramin,ramin_size,ramht,handle,offset,
++                                        4,physical,physical_size);
++    if(!destination)return 0;
++    memcpy(destination,&value,4);
++    return 1;
++}
+ #endif

@@ -1,0 +1,102 @@
+--- a/src/input/xinput_device.c
++++ b/src/input/xinput_device.c
+@@ -121,6 +121,8 @@
+ #include <SDL.h>
+ #include <stdlib.h>
+ #include <pthread.h>
++#include <ctype.h>
++#include <errno.h>
+ 
+ static SDL_GameController *g_pads[XBOX_MAX_CONTROLLERS];
+ static BOOL  g_controller_connected[XBOX_MAX_CONTROLLERS];
+@@ -132,6 +134,8 @@
+ static SDL_atomic_t keyboard_buttons;
+ static uint32_t test_start_ms;
+ static const char *test_input_file;
++/* Read-only capability marker for external regression drivers. */
++const unsigned xbox_test_input_version=2;
+ static unsigned test_buttons=0x10;
+ static uint32_t input_start_ticks;
+ void xbox_InputKeyboardEvent(int scancode, int pressed)
+@@ -171,6 +175,41 @@
+         next=pressed ? old | bit : old & ~bit;
+     } while (!SDL_AtomicCAS(&keyboard_buttons,old,next));
+ }
++/* Opt-in probe format: hex mask, optionally followed by four signed decimal
++ * stick axes in Xbox coordinates. Reject partial/out-of-range records rather
++ * than retaining a previous steering command. Keyboard directions override
++ * these probe axes below, as they do real controller axes. */
++typedef struct {
++    unsigned buttons;
++    int has_axes;
++    SHORT axes[4];
++} TestInput;
++static int parse_test_input(const char *text, TestInput *result)
++{
++    TestInput parsed={0};
++    char *end;
++    while(isspace((unsigned char)*text))text++;
++    if(*text=='-')return 0;
++    errno=0;
++    unsigned long buttons=strtoul(text,&end,16);
++    if(end==text || errno || buttons>0xffffff)return 0;
++    parsed.buttons=(unsigned)buttons;
++    if(*end && !isspace((unsigned char)*end))return 0;
++    text=end;while(isspace((unsigned char)*text))text++;
++    if(*text) {
++        for(unsigned i=0;i<4;i++) {
++            errno=0;long axis=strtol(text,&end,10);
++            if(end==text || errno || axis < -32768 || axis > 32767)return 0;
++            if(*end && !isspace((unsigned char)*end))return 0;
++            parsed.axes[i]=(SHORT)axis;
++            text=end;while(isspace((unsigned char)*text))text++;
++        }
++        if(*text)return 0;
++        parsed.has_axes=1;
++    }
++    *result=parsed;
++    return 1;
++}
+ static void keyboard_state(XBOX_INPUT_STATE *state)
+ {
+     unsigned buttons=(unsigned)SDL_AtomicGet(&keyboard_buttons);
+@@ -178,17 +217,32 @@
+     uint32_t elapsed=SDL_GetTicks()-input_start_ticks;
+     if (test_start_ms && elapsed >= test_start_ms && elapsed-test_start_ms < 2000)
+         buttons |= test_buttons;
+-    /* Optional live probe control: a hexadecimal keyboard-mask file. The
+-     * normal input path never opens a file. USB polling checks at most 60 Hz. */
++    /* The normal input path never opens a file. USB polling checks the
++     * opt-in probe at most60 Hz; concurrent report readers share one cache. */
+     if (test_input_file) {
++        static pthread_mutex_t probe_lock=PTHREAD_MUTEX_INITIALIZER;
+         static uint32_t last_read;
+-        static unsigned file_buttons;
++        static TestInput cached;
++        pthread_mutex_lock(&probe_lock);
+         if (elapsed-last_read >= 16) {
+-            last_read=elapsed; file_buttons=0;
++            last_read=elapsed; memset(&cached,0,sizeof cached);
+             FILE *f=fopen(test_input_file,"r");
+-            if(f) { unsigned mask; if(fscanf(f,"%x",&mask)==1)file_buttons=mask&0xffffff; fclose(f); }
+-        }
+-        buttons |= file_buttons;
++            if(f) {
++                char line[128];
++                if(fgets(line,sizeof line,f) && fgetc(f)==EOF)
++                    parse_test_input(line,&cached);
++                fclose(f);
++            }
++        }
++        TestInput input=cached;
++        pthread_mutex_unlock(&probe_lock);
++        buttons |= input.buttons;
++        if(input.has_axes) {
++            state->Gamepad.sThumbLX=input.axes[0];
++            state->Gamepad.sThumbLY=input.axes[1];
++            state->Gamepad.sThumbRX=input.axes[2];
++            state->Gamepad.sThumbRY=input.axes[3];
++        }
+     }
+     state->Gamepad.wButtons |= buttons & 0xff;
+     for(unsigned i=0;i<8;i++)

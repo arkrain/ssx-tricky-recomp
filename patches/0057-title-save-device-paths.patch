@@ -1,0 +1,13 @@
+--- a/src/kernel/kernel_path.c
++++ b/src/kernel/kernel_path.c
+@@ -42,6 +42,10 @@
+ } path_rule;
+ 
+ static const path_rule s_rules[] = {
++    /* Title save mounts use these device paths through dynamic U:/T: links.
++     * Match before the broad Partition1 asset rule. */
++    { "\\Device\\Harddisk0\\Partition1\\UDATA\\", 1, "\\UserData", "/UserData" },
++    { "\\Device\\Harddisk0\\Partition1\\TDATA\\", 1, "\\TitleData", "/TitleData" },
+     { "\\Device\\CdRom0\\",                   0, NULL,         NULL          },
+     { "\\Device\\Harddisk0\\Partition1\\",    0, NULL,         NULL          },
+     /* The rest of the disk. Partition 0 is the whole raw device, 2 holds

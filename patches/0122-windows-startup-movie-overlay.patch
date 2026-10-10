@@ -1,0 +1,48 @@
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -28,6 +28,17 @@
+ static volatile LONG s_fb_running;
+ static uint32_t      s_fb_va, s_fb_pitch, s_fb_width = 640, s_fb_height = 480;
+ static uint32_t     *s_rgb;           /* converted 32-bit copy for GDI */
++static SRWLOCK s_movie_lock=SRWLOCK_INIT;
++static uint32_t s_movie_pixels[640*480];
++static int s_movie_active;
++
++void xbox_FramebufferMovieFrame(const uint32_t *pixels)
++{
++    AcquireSRWLockExclusive(&s_movie_lock);
++    if(pixels)memcpy(s_movie_pixels,pixels,sizeof s_movie_pixels);
++    s_movie_active=pixels!=NULL;
++    ReleaseSRWLockExclusive(&s_movie_lock);
++}
+ 
+ void xbox_FramebufferWindowSet(uint32_t fb_va, uint32_t pitch)
+ {
+@@ -99,7 +110,7 @@
+     uint32_t img = row * s_fb_height, total = 54u + img, y, x;
+     uint8_t hdr[54], *line;
+ 
+-    if (!s_rgb || !s_fb_va)
++    if (!s_rgb)
+         return -1;
+     f = fopen(path, "wb");
+     if (!f)
+@@ -188,10 +199,17 @@
+             TranslateMessage(&msg);
+             DispatchMessageA(&msg);
+         }
+-        if (s_fb_va && s_fb_pitch && s_rgb) {
++        int movie;
++        AcquireSRWLockShared(&s_movie_lock);
++        movie=s_movie_active && s_fb_width==640 && s_fb_height==480;
++        if(movie && s_rgb)memcpy(s_rgb,s_movie_pixels,sizeof s_movie_pixels);
++        ReleaseSRWLockShared(&s_movie_lock);
++        if (!movie && s_fb_va && s_fb_pitch && s_rgb) {
+             const uint8_t *src =
+                 (const uint8_t *)((uintptr_t)s_fb_va + xbox_GetMemoryOffset());
+             fb_convert(src, s_fb_pitch / s_fb_width);
++        }
++        if(s_rgb && (movie || (s_fb_va && s_fb_pitch))) {
+             StretchDIBits(hdc, 0, 0, (int)s_fb_width, (int)s_fb_height,
+                           0, 0, (int)s_fb_width, (int)s_fb_height,
+                           s_rgb, &bi, DIB_RGB_COLORS, SRCCOPY);

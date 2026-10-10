@@ -1,0 +1,24 @@
+--- a/src/nv2a/qemu_shim.h
++++ b/src/nv2a/qemu_shim.h
+@@ -374,7 +374,8 @@
+     LARGE_INTEGER freq, count;
+     QueryPerformanceFrequency(&freq);
+     QueryPerformanceCounter(&count);
+-    return (int64_t)(count.QuadPart * 1000000000LL / freq.QuadPart);
++    return (int64_t)((count.QuadPart / freq.QuadPart) * 1000000000LL +
++                     (count.QuadPart % freq.QuadPart) * 1000000000LL / freq.QuadPart);
+ }
+ #define QEMU_CLOCK_VIRTUAL 0
+ 
+--- a/src/apu/apu_shim.h
++++ b/src/apu/apu_shim.h
+@@ -48,7 +48,8 @@
+     LARGE_INTEGER freq, count;
+     QueryPerformanceFrequency(&freq);
+     QueryPerformanceCounter(&count);
+-    return (int64_t)(count.QuadPart * 1000000LL / freq.QuadPart);
++    return (int64_t)((count.QuadPart / freq.QuadPart) * 1000000LL +
++                     (count.QuadPart % freq.QuadPart) * 1000000LL / freq.QuadPart);
+ }
+ #endif
+ 

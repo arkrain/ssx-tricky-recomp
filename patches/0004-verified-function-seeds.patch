@@ -1,0 +1,71 @@
+diff --git a/tools/disasm/__main__.py b/tools/disasm/__main__.py
+index f15b1b2..7bd14e2 100644
+--- a/tools/disasm/__main__.py
++++ b/tools/disasm/__main__.py
+@@ -86,6 +86,8 @@ def main():
+              "into each other.",
+     )
+ 
++    parser.add_argument("--verified-seed-functions", action="append", metavar="JSON",
++                        help="Measured and manually verified entry points; allow realignment even without a standard prologue")
+     args = parser.parse_args()
+ 
+     try:
+@@ -100,7 +102,10 @@ def main():
+             seed_funcs.extend(_got)
+             if args.verbose:
+                 print(f"  Seed file {_seed_path}: {len(_got)} addresses")
+-        seed_funcs = sorted(set(seed_funcs))
++        verified_funcs = []
++        for path in (args.verified_seed_functions or []):
++            verified_funcs.extend(_load_seed_functions(path))
++        seed_funcs = sorted(set(seed_funcs + verified_funcs))
+         disassembler = Disassembler(
+             xbe_path=args.xbe_path,
+             analysis_json=args.analysis_json,
+@@ -111,6 +116,7 @@ def main():
+             force=args.force,
+             extra_sections=extra,
+             seed_functions=seed_funcs,
++            verified_seed_functions=verified_funcs,
+         )
+         success = disassembler.run()
+         sys.exit(0 if success else 1)
+diff --git a/tools/disasm/disasm.py b/tools/disasm/disasm.py
+index 8ab0688..a72d634 100644
+--- a/tools/disasm/disasm.py
++++ b/tools/disasm/disasm.py
+@@ -38,16 +38,18 @@ class Disassembler:
+                  verbose: bool = False,
+                  force: bool = False,
+                  extra_sections: Optional[list] = None,
+-                 seed_functions: Optional[list] = None):
++                 seed_functions: Optional[list] = None,
++                 verified_seed_functions: Optional[list] = None):
+         self.xbe_path = xbe_path
+         self.analysis_json = analysis_json
+         self.output_dir = output_dir or config.DEFAULT_OUTPUT_DIR
+         self.text_only = text_only
+         self.stats_only = stats_only
+         self.verbose = verbose
+-        self.force = force
++        self.force = force or bool(verified_seed_functions)
+         self.extra_sections = extra_sections or []
+-        self.seed_functions = seed_functions or []
++        self.verified_seed_functions = set(verified_seed_functions or [])
++        self.seed_functions = sorted(set(seed_functions or []) | self.verified_seed_functions)
+ 
+         # Components (initialized during run)
+         self.image: Optional[BinaryImage] = None
+@@ -210,7 +212,10 @@ class Disassembler:
+                     # A prologue is the evidence that separates the two cases:
+                     # the bad HL2 seed at 0x00202C2E is six bytes into a mov
+                     # and decodes as nothing of the kind.
+-                    if self.engine.probes_as_prologue(addr):
++                    # Measured targets can follow embedded data without a usual
++                    # prologue. Explicit verified inputs override only this
++                    # heuristic; ordinary seeds retain the rejection guard.
++                    if addr in self.verified_seed_functions or self.engine.probes_as_prologue(addr):
+                         if self.engine.decode_at(addr):
+                             realigned += 1
+                             self.func_detector._add_candidate(

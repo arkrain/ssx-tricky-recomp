@@ -1,0 +1,54 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1065,6 +1065,23 @@
+ static int gl_sample_texture(const void *opaque,int x,int y,uint32_t *color) {
+     return sample_texture_for((const Texture *)opaque,x,y,color);
+ }
++static size_t texture_level_bytes(const Texture *t) {
++    unsigned block=d3d8_format_dxt_block_bytes(t->color);
++    unsigned f=linear_twin(t->color);
++    unsigned bytes=(f==0x13 || f==0x1f)?1:(f==0x10 || f==0x1c || f==0x11 || f==0x1d)?2:4;
++    return block?((size_t)(t->width+3)/4)*((t->height+3)/4)*block:
++        (d3d8_format_is_swizzled(t->color)?(size_t)t->width*t->height*bytes:(size_t)t->pitch*t->height);
++}
++static void texture_next_level(Texture *t) {
++    t->offset+=(uint32_t)texture_level_bytes(t);
++    if(t->width>1)t->width>>=1;
++    if(t->height>1)t->height>>=1;
++}
++static int gl_sample_texture_level(const void *opaque,unsigned level,int x,int y,uint32_t *color) {
++    Texture t=*(const Texture *)opaque;
++    for(unsigned i=0;i<level;i++)texture_next_level(&t);
++    return sample_texture_for(&t,x,y,color);
++}
+ static void gl_finish_batch(void) {
+     if (!s_gl_collect || !s_gl_count) { s_gl_collect=0;return; }
+     uint8_t *mem=(uint8_t *)xbox_GetMemoryOffset();
+@@ -1085,11 +1102,22 @@
+         g->normalized=s_gl_shader && tex_size_from_format(t->color);
+         g->opaque=t;g->sample=gl_sample_texture;
+         g->min_filter=(s_tex_reg[i*16+5]>>16)&255;g->mag_filter=(s_tex_reg[i*16+5]>>24)&15;
+-        unsigned block=d3d8_format_dxt_block_bytes(t->color);
+-        unsigned f=linear_twin(t->color);
+-        unsigned bytes=(f==0x13 || f==0x1f)?1:(f==0x10 || f==0x1c || f==0x11 || f==0x1d)?2:4;
+-        g->source_size=block?((size_t)(t->width+3)/4)*((t->height+3)/4)*block:
+-            (d3d8_format_is_swizzled(t->color)?(size_t)t->width*t->height*bytes:(size_t)t->pitch*t->height);
++        const uint32_t *r=s_tex_reg+i*16;
++        unsigned limit=1,dimension=t->width>t->height?t->width:t->height;
++        while(dimension>1){dimension>>=1;limit++;}
++        g->levels=tex_size_from_format(t->color)?(r[1]>>16)&15:1;
++        if(!g->levels)g->levels=1;
++        if(g->levels>limit)g->levels=limit;
++        g->sample_level=gl_sample_texture_level;
++        int bias=(int)(r[5]&0x1fff);if(bias&0x1000)bias-=0x2000;
++        g->lod_bias=bias/256.f;
++        g->min_lod=(r[3]>>18)&0xfff;g->max_lod=(r[3]>>6)&0xfff;
++        if(g->max_lod>g->levels-1)g->max_lod=g->levels-1;
++        if(g->min_lod>g->max_lod)g->min_lod=g->max_lod;
++        Texture mip=*t;g->source_size=0;
++        for(unsigned level=0;level<g->levels;level++) {
++            g->source_size+=texture_level_bytes(&mip);texture_next_level(&mip);
++        }
+         if(!(s_render_reg[0x1e60/4]&15) && i==0 && !s_gl_textured)g->valid=0;
+     }
+     if(!ssx_gl_draw(&d,s_gl_vertices,s_gl_count)) {fprintf(stderr,"[GL] batch failed\n");abort();}

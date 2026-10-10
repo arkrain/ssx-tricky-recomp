@@ -1,0 +1,13 @@
+--- a/src/kernel/nv2a_pb_scan.c
++++ b/src/kernel/nv2a_pb_scan.c
+@@ -154,7 +154,9 @@
+             break;
+         uint32_t w = *(const uint32_t *)(mem + va);
+         if (s_remaining) {
+-            note(s_subch, s_method);
++            /* The method inventory is diagnostic, not execution state. Its
++             * linear search is expensive for every vertex-program word. */
++            if (scan_enabled()) note(s_subch, s_method);
+             if (s_exec_enabled)
+                 nv2a_pb_exec_method(s_subch, s_method, w);
+             s_remaining--;

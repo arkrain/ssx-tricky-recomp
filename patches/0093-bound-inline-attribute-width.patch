@@ -1,0 +1,20 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -408,7 +408,16 @@
+          * one there, which is why the offset test is on the other side of this
+          * branch. */
+         size_t at = (size_t)a->offset + (size_t)index * a->stride;
+-        if (at + 4 > (size_t)s_gpu.inline_count * 4)
++        unsigned lanes=a->size<4?a->size:4, bytes;
++        switch(a->type) {
++        case 0: case 6: bytes=4;break;
++        case 1: case 5: bytes=lanes*2;break;
++        case 2: bytes=lanes*4;break;
++        case 4: bytes=lanes;break;
++        default:return 0;
++        }
++        size_t available=(size_t)s_gpu.inline_count*4;
++        if (at>available || bytes>available-at)
+             return 0;
+         p = (const uint8_t *)s_gpu.inline_buf + at;
+     } else {

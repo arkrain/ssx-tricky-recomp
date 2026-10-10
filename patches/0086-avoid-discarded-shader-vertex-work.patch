@@ -1,0 +1,49 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1168,12 +1168,15 @@
+         }
+         const float *p[3]={a,b,c};
+         for(int j=0;j<3;j++) {
+-            SsxGlVertex *v=&s_gl_vertices[s_gl_count++];memset(v,0,sizeof(*v));
++            SsxGlVertex *v=&s_gl_vertices[s_gl_count++];
+             memcpy(v->position,p[j],16);if(v->position[3]==0)v->position[3]=1;
+-            rc_unpack(argb,v->diffuse);v->specular[3]=1;
+-            for(int st=0;st<4;st++)v->tex[st][3]=1;
+             if(s_triangle_colors) {memcpy(v->diffuse,s_triangle_color[j][0],16);memcpy(v->specular,s_triangle_color[j][1],16);memcpy(v->tex,s_triangle_tex[j],64);}
+-            else if(uv) {v->tex[0][0]=uv[j][0];v->tex[0][1]=uv[j][1];}
++            else {
++                rc_unpack(argb,v->diffuse);memset(v->specular,0,sizeof v->specular);v->specular[3]=1;
++                memset(v->tex,0,sizeof v->tex);
++                for(int st=0;st<4;st++)v->tex[st][3]=1;
++                if(uv) {v->tex[0][0]=uv[j][0];v->tex[0][1]=uv[j][1];}
++            }
+         }
+         s_gl_shader=s_triangle_colors;s_gl_textured=textured;
+         s_gpu.tris_drawn++;s_gpu.drawn_offset=s_gpu.color_offset;
+@@ -1341,6 +1344,10 @@
+ {
+     float c[4];
+ 
++    /* Shader output supplies the color below; an input-array conversion
++     * here is discarded on every successfully transformed triangle. */
++    if(ssx_vertex_active())return 0xffffffffu;
++
+     if (!fetch_attr(color_attr(), index, c))
+         return 0xFFFFFFFFu;
+     return ((uint32_t)(c[3] * 255.0f) << 24)
+@@ -1554,11 +1561,10 @@
+             memcpy(s_triangle_color[v][1],out[4],16);
+             s_triangle_colors=1;
+             memcpy(s_triangle_tex[v],out[9],sizeof s_triangle_tex[v]);
+-            uv[v][0] = out[9][0]; uv[v][1] = out[9][1];
+-            if (tex_size_from_format(s_gpu.tex.color)) {
+-                uv[v][0] *= s_gpu.tex.width; uv[v][1] *= s_gpu.tex.height;
+-            }
+-            if (!v) {
++            /* The clipping path constructs UVs from the shader varyings.
++             * GL uses those colors directly; only the CPU fallback needs
++             * a packed flat color for its legacy combiner path. */
++            if (!v && !s_gl_collect) {
+                 uint32_t c[4];
+                 for (int k = 0; k < 4; ++k) c[k] = (uint32_t)(fminf(1, fmaxf(0, out[3][k])) * 255);
+                 argb = (c[3] << 24) | (c[0] << 16) | (c[1] << 8) | c[2];

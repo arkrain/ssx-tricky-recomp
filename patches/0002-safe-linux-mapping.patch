@@ -1,0 +1,28 @@
+diff --git a/src/platform/win32_compat.c b/src/platform/win32_compat.c
+index 6ea2baf..0cd732d 100644
+--- a/src/platform/win32_compat.c
++++ b/src/platform/win32_compat.c
+@@ -1548,10 +1548,22 @@ LPVOID MapViewOfFileEx(HANDLE mapping, DWORD access, DWORD offHigh, DWORD offLow
+     off_t  off = ((off_t)offHigh << 32) | offLow;
+     SIZE_T len = count ? count : (o->map_size - (SIZE_T)off);
+     int prot   = PROT_READ | ((access != FILE_MAP_READ) ? PROT_WRITE : 0);
+-    int flags  = MAP_SHARED | (baseAddr ? MAP_FIXED : 0);
++    /* Windows fails on an occupied address; MAP_FIXED destroys the host
++     * executable when the Xbox RAM range overlaps a non-PIE Linux image. */
++    int flags = MAP_SHARED;
++#if defined(MAP_FIXED_NOREPLACE)
++    if (baseAddr) flags |= MAP_FIXED_NOREPLACE;
++#endif
+ 
+     void *p = mmap(baseAddr, len, prot, flags, o->fd, off);
+     if (p == MAP_FAILED) { SetLastError(ERROR_NOT_ENOUGH_MEMORY); return NULL; }
++    /* Also check on kernels that ignore MAP_FIXED_NOREPLACE and on hosts
++     * where mmap treats baseAddr as a hint. Never replace an existing view. */
++    if (baseAddr && p != baseAddr) {
++        munmap(p, len);
++        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
++        return NULL;
++    }
+     view_register(p, len);
+     return p;
+ }

@@ -1,0 +1,44 @@
+--- a/tools/recomp/test_icall_feedback.py
++++ b/tools/recomp/test_icall_feedback.py
+@@ -104,7 +104,10 @@
+         db = os.path.join(tmp, "targets.json")
+         out = os.path.join(tmp, "seeds.json")
+         save_db(db, {0x001B5540: 2, 0x001D99BA: 2, 0x0024B5FB: 2, 0x00130EC0: 2})
+-        assert main(["--db", db, "seeds", "--out", out, "--align", "16"]) == 0
++        functions = os.path.join(tmp, "functions.json")
++        with open(functions, "w") as f:
++            json.dump([], f)
++        assert main(["--db", db, "--functions", functions, "seeds", "--out", out, "--align", "16"]) == 0
+         kept = load_db(out)
+     assert sorted(kept) == [0x00130EC0, 0x001B5540], [hex(v) for v in kept]
+ 
+--- a/tools/recomp/test_lifter_frame_bridge.py
++++ b/tools/recomp/test_lifter_frame_bridge.py
+@@ -24,7 +24,7 @@
+         lifted = Lifter().lift_instruction(instruction)
+ 
+         self.assertEqual(len(lifted), 1)
+-        self.assertIn("uint32_t _icall_target = MEM32(esp + 0xC)", lifted[0])
++        self.assertIn("uint32_t _icall_target = RECOMP_READ32(esp + 0xC)", lifted[0])
+         self.assertLess(
+             lifted[0].index("uint32_t _icall_target"),
+             lifted[0].index("PUSH32(esp,"))
+--- a/tools/recomp/test_prologue_saved_frame.py
++++ b/tools/recomp/test_prologue_saved_frame.py
+@@ -16,4 +16,4 @@
+     code = FunctionTranslator(image, db).translate_function(base, db[base])
+     assert code.index('ebp = g_ebp;') < code.index('PUSH32(esp, ebp);')
+     assert code.index('PUSH32(esp, ebp);') < code.index('ebp = esp;')
+-    assert 'eax = MEM32(ebp);' in code
++    assert 'eax = RECOMP_READ32(ebp);' in code
+--- a/tools/recomp/test_reserved_idents.py
++++ b/tools/recomp/test_reserved_idents.py
+@@ -91,6 +91,8 @@
+             with self.subTest(name=name):
+                 self.assertIn(name, _FUNC_RESERVED_IDENT,
+                               f"{name} is missing from the reserved set")
++                if name == "onexit" and os.name != "nt":
++                    continue  # Microsoft CRT declaration; not in POSIX stdlib.h.
+                 rc, _ = _compile(f"void {name}(void);\nvoid {name}(void) {{ }}")
+                 self.assertNotEqual(
+                     rc, 0,

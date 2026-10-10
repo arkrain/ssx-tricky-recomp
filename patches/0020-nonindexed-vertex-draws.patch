@@ -1,0 +1,20 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1800,6 +1800,17 @@
+             s_gpu.inline_buf[s_gpu.inline_count++] = param;
+         break;
+ 
++    case 0x1810: { /* NV097_DRAW_ARRAYS: low 24 bits start, high byte count-1 */
++        uint32_t first = param & 0xffffffu, count = (param >> 24) + 1;
++        if (s_gpu.prim && first <= 0xffffu && first + count <= 0x10000u &&
++            s_gpu.idx_count + count <= NV_MAX_INDICES)
++            for (uint32_t n = 0; n < count; ++n) s_gpu.idx[s_gpu.idx_count++] = (uint16_t)(first + n);
++        break;
++    }
++    case 0x1808: /* NV097_ARRAY_ELEMENT32 */
++        if (s_gpu.prim && param <= 0xffffu && s_gpu.idx_count < NV_MAX_INDICES)
++            s_gpu.idx[s_gpu.idx_count++] = (uint16_t)param;
++        break;
+     case NV097_ARRAY_ELEMENT16:
+         /* Two 16-bit indices per parameter word. */
+         if (s_gpu.prim && s_gpu.idx_count + 2 <= NV_MAX_INDICES) {

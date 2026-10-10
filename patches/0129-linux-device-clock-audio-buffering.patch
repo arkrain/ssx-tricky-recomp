@@ -1,0 +1,122 @@
+--- a/src/apu/apu_xaudio2.c
++++ b/src/apu/apu_xaudio2.c
+@@ -160,13 +160,22 @@
+     return XA2_BUF_SAMPLES;
+ }
+ 
++/* Windows retains its existing rational-deadline pacing. */
++int xa2_get_queued_frames(void) { return -1; }
++int xa2_get_target_frames(void) { return -1; }
++
+ #else /* POSIX: queued SDL2 audio */
+ #include <SDL.h>
+ 
+ static SDL_AudioDeviceID s_device;
+ static int s_audio_initialized;
+ #define SDL_AUDIO_FRAMES 256
+-#define SDL_AUDIO_MAX_BYTES (SDL_AUDIO_FRAMES * 2 * sizeof(int16_t) * 4)
++/* Keep eight native blocks ahead of the device (~43 ms), rather than
++ * starting empty and racing a 5 ms callback with a millisecond host clock. */
++#define SDL_AUDIO_TARGET_FRAMES (SDL_AUDIO_FRAMES * 8)
++#define SDL_AUDIO_MAX_BYTES (SDL_AUDIO_TARGET_FRAMES * 2 * 2 * sizeof(int16_t))
++static int s_started;
++static unsigned long long s_submitted_frames, s_underruns, s_rejected;
+ 
+ int xa2_init(void)
+ {
+@@ -180,20 +189,27 @@
+     desired.freq = 48000;
+     desired.format = AUDIO_S16SYS;
+     desired.channels = 2;
+-    desired.samples = SDL_AUDIO_FRAMES;
++    desired.samples = 512;
+     s_device = SDL_OpenAudioDevice(NULL, 0, &desired, &obtained, 0);
+     if (!s_device) {
+         fprintf(stderr, "[Audio] SDL device failed: %s\n", SDL_GetError());
+         xa2_shutdown();
+         return 0;
+     }
+-    SDL_PauseAudioDevice(s_device, 0);
+-    fprintf(stderr, "[Audio] SDL2 output: 48000 Hz stereo signed 16-bit\n");
++    s_started = 0;
++    s_submitted_frames = s_underruns = s_rejected = 0;
++    /* SDL opens paused. Start only after real PCM fills the prebuffer. */
++    fprintf(stderr, "[Audio] SDL2 output: 48000 Hz stereo signed 16-bit; 2048-frame prebuffer, device period %u\n", obtained.samples);
+     return 1;
+ }
+ void xa2_shutdown(void)
+ {
+-    if (s_device) SDL_CloseAudioDevice(s_device);
++    if (s_device) {
++        SDL_CloseAudioDevice(s_device);
++        fprintf(stderr, "[Audio] frames=%llu underruns=%llu rejected=%llu\n",
++                s_submitted_frames, s_underruns, s_rejected);
++    }
++    s_started = 0;
+     s_device = 0;
+     if (s_audio_initialized) SDL_QuitSubSystem(SDL_INIT_AUDIO);
+     s_audio_initialized = 0;
+@@ -203,8 +219,26 @@
+ {
+     if (!s_device || !samples || frames <= 0 || frames > SDL_AUDIO_FRAMES) return 0;
+     unsigned bytes = (unsigned)frames * 2 * sizeof(int16_t);
+-    if (SDL_GetQueuedAudioSize(s_device) + bytes > SDL_AUDIO_MAX_BYTES) return 0;
+-    return SDL_QueueAudio(s_device, samples, bytes) == 0;
++    unsigned queued = SDL_GetQueuedAudioSize(s_device);
++    if (s_started && !queued) {
++        SDL_PauseAudioDevice(s_device, 1);
++        s_started = 0;
++        s_underruns++;
++        if (s_underruns <= 4)
++            fprintf(stderr, "[Audio] playback queue drained; rebuilding prebuffer (%llu)\n", s_underruns);
++    }
++    if (queued + bytes > SDL_AUDIO_MAX_BYTES || SDL_QueueAudio(s_device, samples, bytes) != 0) {
++        s_rejected++;
++        return 0;
++    }
++    s_submitted_frames += frames;
++    if (!s_started && queued + bytes >= SDL_AUDIO_TARGET_FRAMES * 2 * sizeof(int16_t)) {
++        SDL_PauseAudioDevice(s_device, 0);
++        s_started = 1;
++    }
++    return 1;
+ }
+ int xa2_get_buffer_size(void) { return SDL_AUDIO_FRAMES; }
++int xa2_get_queued_frames(void) { return s_device ? (int)(SDL_GetQueuedAudioSize(s_device) / 4) : -1; }
++int xa2_get_target_frames(void) { return s_device ? SDL_AUDIO_TARGET_FRAMES : -1; }
+ #endif
+--- a/src/apu/apu_xaudio2.h
++++ b/src/apu/apu_xaudio2.h
+@@ -21,4 +21,9 @@
+ /* Get the preferred buffer size in samples. */
+ int xa2_get_buffer_size(void);
+ 
++/* Device-clock pacing on SDL; -1 means use the rational host deadline.
++ * Called only by the APU producer, between output blocks. */
++int xa2_get_queued_frames(void);
++int xa2_get_target_frames(void);
++
+ #endif /* APU_XAUDIO2_H */
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -392,6 +392,20 @@
+         return;
+     }
+ 
++    int target = xa2_get_target_frames();
++    if (target > 0) {
++        /* The device consumes the PCM at 48 kHz. Produce until its bounded
++         * lead is restored; do not let two independent clocks slowly drain
++         * the queue. Timed waits release the APU lock for MMIO/shutdown. */
++        int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
++        while (!d->pause_requested && !qatomic_read(&d->exiting) &&
++               xa2_get_queued_frames() >= target)
++            qemu_cond_timedwait(&d->cond, &d->lock, 1);
++        d->sleep_acc_us += (int)(qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_us);
++        d->next_frame_time_thirds_us = 0;
++        return;
++    }
++
+     int64_t now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+ 
+     apu_deadline_prepare(&d->next_frame_time_thirds_us, now_us);

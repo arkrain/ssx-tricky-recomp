@@ -1,0 +1,1106 @@
+[
+  {
+    "start": "0x0017FCEC",
+    "reason": "Observed second XPP initialization callback; pointer in structures at 0x0017FB70 and 0x0017FB88; original bytes decoded at callback entry."
+  },
+  {
+    "start": "0x001818FC",
+    "reason": "Observed USB configuration-completion callback from 0x00182F02; original entry decoded as mov ax,[0x001FE532], push ebx, xor ebx,ebx. Nonstandard prologue requires verified seed."
+  },
+  {
+    "start": "0x00181028",
+    "reason": "Observed controller report-completion indirect callback at guest return 0x0018172B after GET_REPORT; verified original instruction boundary."
+  },
+  {
+    "start": "0xad797",
+    "reason": "Verified original shared course-loading tail block, reached from sub_000AD4A0 during Garibaldi load; previously emitted as an unresolved direct tail target."
+  },
+  {
+    "start": "0xad799",
+    "reason": "Verified original shared course-loading tail block, reached from sub_000AD4A0 during Garibaldi load; previously emitted as an unresolved direct tail target."
+  },
+  {
+    "start": "0x00044DD0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x00045CF0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x00045CE0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000455B0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x00048A40",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x00047130. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x00048A50",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x00048460. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x00048C40",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x00048AB0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x0005A950",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x0005A960. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x0005A970",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x0005A980. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x0005A9B0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x0005A9C0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x0005A9F0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x0005AA00. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x0005AA10",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x0005AA20. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x0005BEB0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x0005AA30. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x0005BEC0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x0005BDD0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x0005BED0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x0005BE30. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE570",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CE9F0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE580",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CD310. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE590",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CB7C0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE5A0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CE890. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE5B0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CE5C0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE5D0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CE950. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE5E0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CE5F0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE600",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CE500. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE610",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000B5CF0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE620",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CE7D0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE630",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CE6D0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE640",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CE730. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CE650",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CC410. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CEC20",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CDF00. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CED80",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CED90. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CEDA0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CDFD0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CEEF0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CEF00. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000CEF10",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CE370. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000D3300",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D3390. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000D3310",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D3320. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000D3340",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D3350. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000D3370",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000C9F70. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000D3380",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000B5C10. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC850",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D72F0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC860",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D7430. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC870",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D7830. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC880",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D4800. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC890",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D4DE0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC8A0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D5980. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC8B0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DA4F0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC8C0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DA0B0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC8D0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DB420. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC8E0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DAFD0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC8F0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DBFE0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC900",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DBA80. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC910",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D6430. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC920",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D68A0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC930",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D72B0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC940",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D6310. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC950",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DC3E0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC960",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DC420. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC970",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DC3B0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC980",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D7C40. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC990",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D7F20. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC9A0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D8800. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC9B0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D7950. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC9C0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D0D80. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC9D0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D0D10. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC9E0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D61A0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DC9F0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D6230. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DD560",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DD3D0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DD6C0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DD6D0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DD6E0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CB0A0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DD7A0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D14F0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DD7B0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000D12D0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000DD7C0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000DCB60. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000E95D0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000CEC10. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000E95E0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000E88B0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000E95F0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000E89A0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000EC7E0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000EC770. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x000EC7F0",
+    "reason": "Exact original MSVC vtordisp adjustment thunk: SUB ECX,[ECX-4]; JMP 0x000EC6B0. Pattern scanned in executable XBE sections after observing 0x00048C40 at guest return 0x00036F82 during Garibaldi loading."
+  },
+  {
+    "start": "0x001175F0",
+    "reason": "Observed loading callback at guest return 0x00116F3A; original four-instruction wrapper loads this from argument+0x80 and tail-jumps to 0x00117220. Address explicitly stored by original game."
+  },
+  {
+    "start": "0x00114230",
+    "reason": "Observed indirect callback after Garibaldi race briefing, guest return 0x00116F3A. Original body begins MOV EAX,[ESP+4]; SUB ESP,8; PUSH EBX/EBP/ESI; loads object from argument+0x80. Registered explicitly at 0x00116239 and 0x0011670F."
+  },
+  {
+    "start": "0x001107F0",
+    "reason": "Original registered callback pointer at 0x001154F5; verified NOP-padded entry and complete body ending 0x0011089C RET 4. Audited alongside observed 0x00114230 course-transition callback."
+  },
+  {
+    "start": "0x00114320",
+    "reason": "Original registered callback pointer at 0x0011235B and 0x00116755; verified NOP-padded entry and complete body ending 0x001143E4 RET 8. Audited alongside observed 0x00114230 course-transition callback."
+  },
+  {
+    "start": "0x000D1760",
+    "reason": "Observed rider update callback after 42 seconds of Garibaldi gameplay, guest return 0x000D15E6. Registered at 0x000DCEF9. Original entry SUB ESP,0x1A0; PUSH EBX/EBP/ESI; MOV ESI,ECX verified from XBE."
+  },
+  {
+    "start": "0x000D1F60",
+    "reason": "Verified NOP-padded rider callback, explicitly registered at 0x000DD3B4, with original RET at 0x000D25F6. Audited alongside observed 0x000D1760."
+  },
+  {
+    "start": "0x000D2610",
+    "reason": "Verified NOP-padded rider callback, explicitly registered at 0x000DD3A5, with original RET at 0x000D269A. Audited alongside observed 0x000D1760."
+  },
+  {
+    "start": "0x0015F02F",
+    "reason": "Observed missing direct tail in isolated generated atan2 axis/sign cases. Original x86 bytes decode OR CL,CL; JE 0x15F035; FCHS; RET. Shared CRT sign-adjustment tail, independently checked in original x86 emulator."
+  },
+  {
+    "start": "0x000A2144",
+    "reason": "Observed missing direct tail when opening Options from mode selection. Original XBE bytes decode POP EDI; POP ESI; POP EBP; POP EBX; RET 8 at 0xA2144..0xA214A. Shared switch epilogue of the menu controller, reached by verified branches at 0xA213A and generated callers."
+  },
+  {
+    "start": "0x00012D00",
+    "reason": "Observed audio-enabled indirect callback at guest return 0x00016E6D. Original NOP-padded entry loads allocation metadata from [argument-4], selects allocator table 0x205800 and tail-jumps to 0x14F610. Explicitly registered at 0x13328 alongside recovered 0x12D30 streaming callback."
+  },
+  {
+    "start": "0x00025978",
+    "reason": "Original executable branch target independently decoded from 0x00025948. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00031281",
+    "reason": "Original executable branch target independently decoded from 0x00031251. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00033C9D",
+    "reason": "Original executable branch target independently decoded from 0x00033C6C. Complete strict epilogue: pop edi; pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00049275",
+    "reason": "Original executable branch target independently decoded from 0x00049245. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000492E0",
+    "reason": "Original executable branch target independently decoded from 0x000492B0. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0004956F",
+    "reason": "Original executable branch target independently decoded from 0x0004953F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0004A525",
+    "reason": "Original executable branch target independently decoded from 0x0004A4F5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0004ADD8",
+    "reason": "Original executable branch target independently decoded from 0x0004ADA8. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0004AEB1",
+    "reason": "Original executable branch target independently decoded from 0x0004AE81. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0004AF01",
+    "reason": "Original executable branch target independently decoded from 0x0004AED1. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0004B155",
+    "reason": "Original executable branch target independently decoded from 0x0004B125. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0004B2A5",
+    "reason": "Original executable branch target independently decoded from 0x0004B275. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00051155",
+    "reason": "Original executable branch target independently decoded from 0x00051125. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0005163C",
+    "reason": "Original executable branch target independently decoded from 0x0005160C. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00051873",
+    "reason": "Original executable branch target independently decoded from 0x00051843. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00052D0C",
+    "reason": "Original executable branch target independently decoded from 0x00052CDC. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0005306F",
+    "reason": "Original executable branch target independently decoded from 0x0005303F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0005360F",
+    "reason": "Original executable branch target independently decoded from 0x000535DF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0005379F",
+    "reason": "Original executable branch target independently decoded from 0x0005376F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00053925",
+    "reason": "Original executable branch target independently decoded from 0x000538F5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0005397F",
+    "reason": "Original executable branch target independently decoded from 0x0005394F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00053A3C",
+    "reason": "Original executable branch target independently decoded from 0x00053A0C. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00053BBF",
+    "reason": "Original executable branch target independently decoded from 0x00053B8F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00053CDF",
+    "reason": "Original executable branch target independently decoded from 0x00053CAF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00053D6F",
+    "reason": "Original executable branch target independently decoded from 0x00053D3F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00053E55",
+    "reason": "Original executable branch target independently decoded from 0x00053E25. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00053EA5",
+    "reason": "Original executable branch target independently decoded from 0x00053E75. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000541FF",
+    "reason": "Original executable branch target independently decoded from 0x000541CF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000548CF",
+    "reason": "Original executable branch target independently decoded from 0x0005489F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0005493F",
+    "reason": "Original executable branch target independently decoded from 0x0005490F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00054ACF",
+    "reason": "Original executable branch target independently decoded from 0x00054A9F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0005530F",
+    "reason": "Original executable branch target independently decoded from 0x000552DF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000555E3",
+    "reason": "Original executable branch target independently decoded from 0x000555B3. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00055975",
+    "reason": "Original executable branch target independently decoded from 0x00055945. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00055F81",
+    "reason": "Original executable branch target independently decoded from 0x00055F51. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000580DD",
+    "reason": "Original executable branch target independently decoded from 0x00057CA0, 0x00057CD1, 0x00057E6C, 0x00057EF0, 0x00057FBA, 0x00058000, 0x00058065, 0x00058090. Complete strict epilogue: pop edi; pop esi; pop ebp; add esp, 0x100; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000580DE",
+    "reason": "Original executable branch target independently decoded from 0x00057C37. Complete strict epilogue: pop esi; pop ebp; add esp, 0x100; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000586DF",
+    "reason": "Original executable branch target independently decoded from 0x000586AF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0005C10A",
+    "reason": "Original executable branch target independently decoded from 0x0005C0DA. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000608B7",
+    "reason": "Original executable branch target independently decoded from 0x00060520. Complete strict epilogue: pop ebp; pop esi; add esp, 0x18; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000608B8",
+    "reason": "Original executable branch target independently decoded from 0x000604E9. Complete strict epilogue: pop esi; add esp, 0x18; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00077841",
+    "reason": "Original executable branch target independently decoded from 0x00077811. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000784EB",
+    "reason": "Original executable branch target independently decoded from 0x000784BB. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0007BCCF",
+    "reason": "Original executable branch target independently decoded from 0x0007BC9F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0007BE81",
+    "reason": "Original executable branch target independently decoded from 0x0007BE51. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0007BF15",
+    "reason": "Original executable branch target independently decoded from 0x0007BEE5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0007BFA5",
+    "reason": "Original executable branch target independently decoded from 0x0007BF75. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0007D2AC",
+    "reason": "Original executable branch target independently decoded from 0x0007D27C. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0007D4DF",
+    "reason": "Original executable branch target independently decoded from 0x0007D4AF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0007D57F",
+    "reason": "Original executable branch target independently decoded from 0x0007D54F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0007E7DF",
+    "reason": "Original executable branch target independently decoded from 0x0007E7AF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0007ECC1",
+    "reason": "Original executable branch target independently decoded from 0x0007EC91. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0007F6EF",
+    "reason": "Original executable branch target independently decoded from 0x0007F6BF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0008050F",
+    "reason": "Original executable branch target independently decoded from 0x000804DF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000806A5",
+    "reason": "Original executable branch target independently decoded from 0x00080675. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00081092",
+    "reason": "Original executable branch target independently decoded from 0x00081062. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00081164",
+    "reason": "Original executable branch target independently decoded from 0x00081134. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00081AE7",
+    "reason": "Original executable branch target independently decoded from 0x00081AB7. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0008375F",
+    "reason": "Original executable branch target independently decoded from 0x0008372F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00084531",
+    "reason": "Original executable branch target independently decoded from 0x00084501. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00084D41",
+    "reason": "Original executable branch target independently decoded from 0x00084D11. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0008589C",
+    "reason": "Original executable branch target independently decoded from 0x0008586C. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00085A12",
+    "reason": "Original executable branch target independently decoded from 0x000859E2. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00085BD5",
+    "reason": "Original executable branch target independently decoded from 0x00085BA5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000878ED",
+    "reason": "Original executable branch target independently decoded from 0x000878BC. Complete strict epilogue: pop edi; pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00087955",
+    "reason": "Original executable branch target independently decoded from 0x00087925. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000879B5",
+    "reason": "Original executable branch target independently decoded from 0x00087985. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00087A7F",
+    "reason": "Original executable branch target independently decoded from 0x00087A4F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00087AF5",
+    "reason": "Original executable branch target independently decoded from 0x00087AC5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00087B65",
+    "reason": "Original executable branch target independently decoded from 0x00087B35. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00087BE5",
+    "reason": "Original executable branch target independently decoded from 0x00087BB5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00087C45",
+    "reason": "Original executable branch target independently decoded from 0x00087C15. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00087CC5",
+    "reason": "Original executable branch target independently decoded from 0x00087C95. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00087D15",
+    "reason": "Original executable branch target independently decoded from 0x00087CE5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00087E15",
+    "reason": "Original executable branch target independently decoded from 0x00087DE5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00088D05",
+    "reason": "Original executable branch target independently decoded from 0x00088CD5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00089472",
+    "reason": "Original executable branch target independently decoded from 0x00089442. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00094DB5",
+    "reason": "Original executable branch target independently decoded from 0x00094D85. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00094E21",
+    "reason": "Original executable branch target independently decoded from 0x00094DF0. Complete strict epilogue: pop edi; pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00096E15",
+    "reason": "Original executable branch target independently decoded from 0x00096DE5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00096E75",
+    "reason": "Original executable branch target independently decoded from 0x00096E45. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00096EF5",
+    "reason": "Original executable branch target independently decoded from 0x00096EC5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00096F65",
+    "reason": "Original executable branch target independently decoded from 0x00096F35. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00098D92",
+    "reason": "Original executable branch target independently decoded from 0x00098D62. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0009D8D5",
+    "reason": "Original executable branch target independently decoded from 0x0009D8A5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000A6B25",
+    "reason": "Original executable branch target independently decoded from 0x000A6AF5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000A9101",
+    "reason": "Original executable branch target independently decoded from 0x000A90D1. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000A9761",
+    "reason": "Original executable branch target independently decoded from 0x000A9731. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000A9B33",
+    "reason": "Original executable branch target independently decoded from 0x000A9B03. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AABEA",
+    "reason": "Original executable branch target independently decoded from 0x000AABBA. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AACB5",
+    "reason": "Original executable branch target independently decoded from 0x000AAC85. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AAFD1",
+    "reason": "Original executable branch target independently decoded from 0x000AAFA1. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AB025",
+    "reason": "Original executable branch target independently decoded from 0x000AAFF5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AB075",
+    "reason": "Original executable branch target independently decoded from 0x000AB045. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AB0C5",
+    "reason": "Original executable branch target independently decoded from 0x000AB095. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AB115",
+    "reason": "Original executable branch target independently decoded from 0x000AB0E5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AB165",
+    "reason": "Original executable branch target independently decoded from 0x000AB135. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AC91F",
+    "reason": "Original executable branch target independently decoded from 0x000AC8EF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AC99F",
+    "reason": "Original executable branch target independently decoded from 0x000AC96F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AED58",
+    "reason": "Original executable branch target independently decoded from 0x000AED28. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000AEE9F",
+    "reason": "Original executable branch target independently decoded from 0x000AEE6F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B037F",
+    "reason": "Original executable branch target independently decoded from 0x000B034F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B0D33",
+    "reason": "Original executable branch target independently decoded from 0x000B0D03. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B2661",
+    "reason": "Original executable branch target independently decoded from 0x000B2631. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B2DDF",
+    "reason": "Original executable branch target independently decoded from 0x000B2DAF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B40CF",
+    "reason": "Original executable branch target independently decoded from 0x000B409F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B48BF",
+    "reason": "Original executable branch target independently decoded from 0x000B488F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B49D2",
+    "reason": "Original executable branch target independently decoded from 0x000B49A2. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B4A9F",
+    "reason": "Original executable branch target independently decoded from 0x000B4A6F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B4D6F",
+    "reason": "Original executable branch target independently decoded from 0x000B4D3F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B4DF8",
+    "reason": "Original executable branch target independently decoded from 0x000B4DC8. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B505F",
+    "reason": "Original executable branch target independently decoded from 0x000B502F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B53DF",
+    "reason": "Original executable branch target independently decoded from 0x000B53AF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B56AF",
+    "reason": "Original executable branch target independently decoded from 0x000B567F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B58EF",
+    "reason": "Original executable branch target independently decoded from 0x000B58BF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B5B0F",
+    "reason": "Original executable branch target independently decoded from 0x000B5ADF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B6361",
+    "reason": "Original executable branch target independently decoded from 0x000B6331. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B6551",
+    "reason": "Original executable branch target independently decoded from 0x000B6521. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B6B28",
+    "reason": "Original executable branch target independently decoded from 0x000B6AF8. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000B7100",
+    "reason": "Original executable branch target independently decoded from 0x000B70D0. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000C07CF",
+    "reason": "Original executable branch target independently decoded from 0x000C079F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000C0AA5",
+    "reason": "Original executable branch target independently decoded from 0x000C0A75. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000C0C36",
+    "reason": "Original executable branch target independently decoded from 0x000C0C06. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000C0D7C",
+    "reason": "Original executable branch target independently decoded from 0x000C0D4C. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000C9B91",
+    "reason": "Original executable branch target independently decoded from 0x000C9B61. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000CE6CA",
+    "reason": "Original executable branch target independently decoded from 0x000CE69A. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000CEB05",
+    "reason": "Original executable branch target independently decoded from 0x000CEAD5. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000CEB55",
+    "reason": "Original executable branch target independently decoded from 0x000CEB25. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000DE385",
+    "reason": "Original executable branch target independently decoded from 0x000DE355. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000DEE2F",
+    "reason": "Original executable branch target independently decoded from 0x000DEDFF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000E0021",
+    "reason": "Original executable branch target independently decoded from 0x000DFFF1. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000E014F",
+    "reason": "Original executable branch target independently decoded from 0x000E011F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000E01B4",
+    "reason": "Original executable branch target independently decoded from 0x000E0184. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000E165E",
+    "reason": "Original executable branch target independently decoded from 0x000E162E. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000E265B",
+    "reason": "Original executable branch target independently decoded from 0x000E262B. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000E5278",
+    "reason": "Original executable branch target independently decoded from 0x000E5248. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000E819F",
+    "reason": "Original executable branch target independently decoded from 0x000E816F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000E9801",
+    "reason": "Original executable branch target independently decoded from 0x000E97D1. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000F40BF",
+    "reason": "Original executable branch target independently decoded from 0x000F408F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000F6DBF",
+    "reason": "Original executable branch target independently decoded from 0x000F6D8F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000FE5E1",
+    "reason": "Original executable branch target independently decoded from 0x000FE5B1. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000FE631",
+    "reason": "Original executable branch target independently decoded from 0x000FE601. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00102E41",
+    "reason": "Original executable branch target independently decoded from 0x00102E11. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0010474F",
+    "reason": "Original executable branch target independently decoded from 0x0010471F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00106435",
+    "reason": "Original executable branch target independently decoded from 0x00106405. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0010692C",
+    "reason": "Original executable branch target independently decoded from 0x001068FC. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x001074EF",
+    "reason": "Original executable branch target independently decoded from 0x001074BF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0010B94F",
+    "reason": "Original executable branch target independently decoded from 0x0010B91F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0010C242",
+    "reason": "Original executable branch target independently decoded from 0x0010C212. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0010D68F",
+    "reason": "Original executable branch target independently decoded from 0x0010D65F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0010DBDF",
+    "reason": "Original executable branch target independently decoded from 0x0010DBAF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0011163F",
+    "reason": "Original executable branch target independently decoded from 0x0011160F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00117055",
+    "reason": "Original executable branch target independently decoded from 0x00117025. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0011881F",
+    "reason": "Original executable branch target independently decoded from 0x001187EF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x001190FF",
+    "reason": "Original executable branch target independently decoded from 0x001190CF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0011924E",
+    "reason": "Original executable branch target independently decoded from 0x0011921E. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0011B3CF",
+    "reason": "Original executable branch target independently decoded from 0x0011B39F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0011BB6F",
+    "reason": "Original executable branch target independently decoded from 0x0011BB3F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0011BC5F",
+    "reason": "Original executable branch target independently decoded from 0x0011BC2F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0011C5DF",
+    "reason": "Original executable branch target independently decoded from 0x0011C5AF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0011D6DF",
+    "reason": "Original executable branch target independently decoded from 0x0011D6AF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0011D903",
+    "reason": "Original executable branch target independently decoded from 0x0011D8D3. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00128B81",
+    "reason": "Original executable branch target independently decoded from 0x00128B51. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0012A160",
+    "reason": "Original executable branch target independently decoded from 0x0012A130. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0012A23F",
+    "reason": "Original executable branch target independently decoded from 0x0012A20F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0012A711",
+    "reason": "Original executable branch target independently decoded from 0x0012A6E1. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0012CE4F",
+    "reason": "Original executable branch target independently decoded from 0x0012CE1F. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0013580F",
+    "reason": "Original executable branch target independently decoded from 0x001357DF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00136265",
+    "reason": "Original executable branch target independently decoded from 0x00136235. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0013645D",
+    "reason": "Original executable branch target independently decoded from 0x0013642D. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00136DAD",
+    "reason": "Original executable branch target independently decoded from 0x00136D7D. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x001376CD",
+    "reason": "Original executable branch target independently decoded from 0x0013769D. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00137D2D",
+    "reason": "Original executable branch target independently decoded from 0x00137CFD. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0013821D",
+    "reason": "Original executable branch target independently decoded from 0x001381ED. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x001386ED",
+    "reason": "Original executable branch target independently decoded from 0x001386BD. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00138F0D",
+    "reason": "Original executable branch target independently decoded from 0x00138EDD. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x0013A775",
+    "reason": "Original executable branch target independently decoded from 0x0013A745. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x001487F1",
+    "reason": "Original executable branch target independently decoded from 0x001487C1. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x00148DEF",
+    "reason": "Original executable branch target independently decoded from 0x00148DBF. Complete strict epilogue: pop esi; ret 4. Audited by scripts/audit-shared-tails.py after Options exposed missing shared epilogues."
+  },
+  {
+    "start": "0x000A2136",
+    "reason": "Observed missing direct tail while navigating Save/Load in Options. Original CMP [EDI+0x70],1; JNE 0xA2144; PUSH ESI; MOV ECX,EDI; CALL 0x9E770; falls through to verified POP EDI/ESI/EBP/EBX; RET 8 epilogue."
+  },
+  {
+    "start": "0x00014DD0",
+    "reason": "Observed audio-enabled callback at guest return 0x184BD while entering the mode menu. Registered as a callback at 0x14E14. Original NOP-padded seven-instruction wrapper adds byte globals 0x2058AD/AE to argument [ESP+4] and tail-jumps to recovered 0x14980. Audited exact instructions in reports/verified-callback-audit60.json."
+  },
+  {
+    "start": "0x000DFFD6",
+    "reason": "Observed audio-enabled course loading failure. Original JLE at 0xDFF66 targets POP EDI; POP EBP; POP ECX; RET, completing the zero-entry case of 0xDFF40. Audited exact XBE bytes and incoming branch in reports/verified-epilogue-audit74.json."
+  },
+  {
+    "start": "0x000895D3",
+    "reason": "Observed missing direct tail when opening Board in character setup on portable135. Original JNE at 0x894A1 targets DEC EAX; CMP EAX,4; JA 0x8979E; JMP [EAX*4+0x897A8], dispatching the setup submenus. Independently decoded incoming branch and original bytes in reports/direct-target-audit136.json; no existing emitted body contains this entry. Recover original instructions and jump-table cases, without replacing behavior."
+  },
+  {
+    "start": "0x000580F0",
+    "reason": "Observed unresolved callback on Trick Tutorial Show me in portable139, guest return0x56739. Original CALL [EAX] at0x56737 uses the function pointer0x580F0 stored at0x189DBC. Original entry allocates0x100 stack bytes, saves ESI and obtains the tutorial object from[ESP+0x108]; audited instructions and neighboring virtual-method pointers are recorded in reports/tutorial140-callback-audit.json. Recover original demonstration initialization, without replacing behavior."
+  },
+  {
+    "start": "0x00028730",
+    "reason": "Reviewed original code block with independently decoded incoming branch(es) 0x31336. Recover the original instructions; no behavior replaced. Evidence: reports/direct-target-audit80.json. Observed Snowdream gameplay stop at guest return 0x32C9F."
+  },
+  {
+    "start": "0x0004004E",
+    "reason": "Observed missing direct tail when starting a two-player Garibaldi race in177. Original JG at0x3FEB0 skips single-player initialization when player count exceeds1. Independently decoded strict shared epilogue POP EDI; POP ESI; POP EBX; MOV ESP,EBP; POP EBP; RET, ending0x40055. Existing bodies contain this tail but the0x3FE90 entry reaches an unresolved external target. Audit: reports/direct-target-audit177.json. Recover original instructions without replacing behavior."
+  },
+  {
+    "start": "0x001812AA",
+    "reason": "Observed unresolved USB removal callback after detaching player2 in build177/run178, guest return0x182AAC. Original CALL[EAX+0xC] at0x182AA9 indexes table0x17FB88 whose stored pointer at0x17FB94 is0x1812AA. Independently decoded complete63-byte body through RET4 at0x1812E6, immediately following prior function RET8; audit reports/controllers178-callback-audit.json. Recover original device-removal handling without replacement behavior."
+  }
+]

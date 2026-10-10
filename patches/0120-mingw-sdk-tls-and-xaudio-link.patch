@@ -1,0 +1,61 @@
+--- a/src/apu/CMakeLists.txt
++++ b/src/apu/CMakeLists.txt
+@@ -34,7 +34,12 @@
+ endif()
+ 
+ if(WIN32)
+-    target_link_libraries(xbox_apu PRIVATE platform kernel32 winmm)
++    target_link_libraries(xbox_apu PRIVATE platform kernel32 winmm ole32)
++    if(MINGW)
++        target_link_libraries(xbox_apu PRIVATE xaudio2_8)
++    else()
++        target_link_libraries(xbox_apu PRIVATE xaudio2)
++    endif()
+ else()
+     # Linux: platform layer (Win32 primitives on POSIX) + SDL2 audio + libm
+     find_package(SDL2 REQUIRED)
+--- a/src/kernel/kernel.h
++++ b/src/kernel/kernel.h
+@@ -37,8 +37,11 @@
+ typedef LONG KPRIORITY;
+ 
+ /* Processor modes */
++#if !defined(_WIN32)
++/* Windows SDK headers can declare these names as enum members. */
+ #define KernelMode  0
+ #define UserMode    1
++#endif
+ 
+ /* IRQL levels (Xbox uses same NT IRQL model) */
+ #define PASSIVE_LEVEL   0
+--- a/src/kernel/kernel_path.c
++++ b/src/kernel/kernel_path.c
+@@ -363,7 +363,7 @@
+ /* Thread-local: several threads open files at once, and a plain static let one
+  * thread's translation overwrite another's between the translate and the read.
+  * That showed up as the FMV trigger firing on roughly two runs in three. */
+-static __declspec(thread) wchar_t s_last_host_path[MAX_PATH];
++static XBOX_THREAD_LOCAL wchar_t s_last_host_path[MAX_PATH];
+ 
+ static void xbox_remember_host_path(const wchar_t *p)
+ {
+--- a/src/platform/xbox_winnt.h
++++ b/src/platform/xbox_winnt.h
+@@ -23,7 +23,7 @@
+ #define XBOX_WINNT_H
+ 
+ /* Thread-local storage qualifier (portable). */
+-#if defined(_WIN32)
++#if defined(_MSC_VER)
+ #define XBOX_THREAD_LOCAL __declspec(thread)
+ #else
+ #define XBOX_THREAD_LOCAL __thread
+@@ -41,7 +41,7 @@
+ }
+ 
+ /* MSVC's __debugbreak() intrinsic -> gcc/clang equivalent on POSIX. */
+-#if !defined(_MSC_VER)
++#if !defined(_WIN32) && !defined(_MSC_VER)
+ #define __debugbreak() __builtin_trap()
+ #endif
+ 

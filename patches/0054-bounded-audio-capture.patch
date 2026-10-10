@@ -1,0 +1,59 @@
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -203,6 +203,39 @@
+ 
+ static WaveOutState g_waveout = { 0 };
+ 
++/* Optional bounded, local PCM capture starts at the first non-silent frame. */
++static FILE *s_pcm_dump;
++static int s_pcm_checked;
++static unsigned s_pcm_frames;
++static void capture_pcm(const int16_t samples[][2])
++{
++    if (!s_pcm_checked) {
++        s_pcm_checked = 1;
++        const char *path = getenv("RECOMP_AUDIO_DUMP");
++        if (path && *path) {
++            s_pcm_dump = fopen(path, "wb");
++            if (!s_pcm_dump) perror("RECOMP_AUDIO_DUMP");
++        }
++    }
++    if (!s_pcm_dump) return;
++    if (!s_pcm_frames) {
++        int peak = 0;
++        for (int i=0;i<256;i++) for(int c=0;c<2;c++) {
++            int value=samples[i][c]; if(value<0)value=-value;
++            if(value>peak)peak=value;
++        }
++        if (!peak) return;
++        fprintf(stderr, "[APU] First non-silent output: peak=%d; capturing 10 seconds of 48 kHz stereo s16 PCM\n", peak);
++    }
++    unsigned count=480000-s_pcm_frames;
++    if(count>256)count=256;
++    if(fwrite(samples, sizeof(samples[0]), count, s_pcm_dump)!=count) {
++        perror("RECOMP_AUDIO_DUMP write"); fclose(s_pcm_dump);s_pcm_dump=NULL;return;
++    }
++    s_pcm_frames+=count;
++    if(s_pcm_frames==480000) { fclose(s_pcm_dump);s_pcm_dump=NULL; }
++}
++
+ void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)
+ {
+     (void)errp;
+@@ -252,6 +285,8 @@
+ void mcpx_apu_monitor_finalize(MCPXAPUState *d)
+ {
+     (void)d;
++    if (s_pcm_dump) fclose(s_pcm_dump);
++    s_pcm_dump=NULL; s_pcm_checked=0; s_pcm_frames=0;
+     if (xa2_is_active()) {
+         xa2_shutdown();
+         return;
+@@ -290,6 +325,7 @@
+         }
+         mixer_render(d->monitor.frame_buf, MIXER_FRAME_SAMPLES);
+     }
++    capture_pcm(d->monitor.frame_buf);
+     if (xa2_is_active()) {
+         xa2_submit_samples((const int16_t *)d->monitor.frame_buf, MIXER_FRAME_SAMPLES);
+     } else if (g_waveout.initialized) {

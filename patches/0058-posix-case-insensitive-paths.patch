@@ -1,0 +1,71 @@
+--- a/src/kernel/kernel_path.c
++++ b/src/kernel/kernel_path.c
+@@ -466,6 +466,8 @@
+ #include <sys/types.h>
+ #include <errno.h>
+ #include <fcntl.h>
++#include <dirent.h>
++#include <strings.h>
+ 
+ static char s_game_dir[MAX_PATH];
+ static char s_save_dir[MAX_PATH];
+@@ -498,6 +500,51 @@
+     }
+     if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
+         xbox_log(XBOX_LOG_WARN, XBOX_LOG_PATH, "mkdir %s: %s", tmp, strerror(errno));
++}
++
++/* FATX paths are case-insensitive. Preserve exact matches first, then resolve
++ * each existing component against the host directory. A missing suffix is
++ * retained so file/directory creation keeps the requested spelling. */
++static BOOL resolve_host_case(char *path, size_t capacity)
++{
++    struct stat st;
++    if (!stat(path, &st)) return TRUE;
++    char resolved[MAX_PATH] = "";
++    size_t used = 0;
++    const char *next = path;
++    if (*next == '/') { resolved[used++] = *next++; resolved[used] = 0; }
++    while (*next) {
++        const char *end = strchr(next, '/');
++        size_t length = end ? (size_t)(end-next) : strlen(next);
++        char component[MAX_PATH];
++        if (length >= sizeof(component)) return FALSE;
++        memcpy(component, next, length); component[length] = 0;
++        DIR *dir = opendir(used ? resolved : ".");
++        if (dir) {
++            struct dirent *entry;
++            char match[MAX_PATH] = "";
++            while ((entry = readdir(dir))) {
++                if (!strcmp(entry->d_name, component)) {
++                    snprintf(match, sizeof(match), "%s", entry->d_name); break;
++                }
++                if (!match[0] && !strcasecmp(entry->d_name, component))
++                    snprintf(match, sizeof(match), "%s", entry->d_name);
++            }
++            closedir(dir);
++            if (match[0]) { strcpy(component, match); length = strlen(component); }
++        }
++        if (used && resolved[used-1] != '/') {
++            if (used+1 >= sizeof(resolved)) return FALSE;
++            resolved[used++]='/';
++        }
++        if (length >= sizeof(resolved)-used) return FALSE;
++        memcpy(resolved+used, component, length+1); used += length;
++        if (!end) break;
++        next=end+1;
++    }
++    if (used >= capacity) return FALSE;
++    memcpy(path, resolved, used+1);
++    return TRUE;
+ }
+ 
+ /* Raw devices are sparse files, distinct from the mounted directory trees.
+@@ -643,6 +690,7 @@
+                 host_path_buf[--n] = '\0';
+         }
+ 
++        if (!resolve_host_case(host_path_buf, buf_size)) return FALSE;
+         XBOX_TRACE(XBOX_LOG_PATH, "%s -> %s", xbox_path, host_path_buf);
+         return TRUE;
+     }

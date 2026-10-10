@@ -1,0 +1,30 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1507,6 +1507,7 @@
+  * invalidate the cache at every batch, including failed/empty batches. */
+ static struct { uint32_t index, generation; float out[13][4]; } s_vertex_cache[256];
+ static uint32_t s_vertex_generation;
++static uint32_t s_vertex_inputs=0xffff;
+ static void raster_indexed(uint32_t i0, uint32_t i1, uint32_t i2, uint32_t argb)
+ {
+     float p[3][4], uv[3][2];
+@@ -1520,9 +1521,9 @@
+             float (*out)[4]=s_vertex_cache[slot].out;
+             if (s_vertex_cache[slot].generation!=s_vertex_generation ||
+                 s_vertex_cache[slot].index!=indices[v]) {
+-                float in[16][4];
++                float in[16][4]={{0}};
+                 for (int a = 0; a < 16; ++a)
+-                    if (!fetch_attr(&s_gpu.attr[a], indices[v], in[a]))
++                    if ((s_vertex_inputs & (1u<<a)) && !fetch_attr(&s_gpu.attr[a], indices[v], in[a]))
+                         memcpy(in[a], s_gpu.imm_attr[a], sizeof(in[a]));
+                 if (!ssx_vertex_execute(in, out)) return;
+                 s_vertex_cache[slot].index=indices[v];
+@@ -1574,6 +1575,7 @@
+     }
+ 
+     if (++s_vertex_generation==0) { memset(s_vertex_cache,0,sizeof s_vertex_cache);s_vertex_generation=1; }
++    s_vertex_inputs=ssx_vertex_input_mask();
+     prepare_textures();
+     uint32_t i;
+     uint32_t before = s_gpu.tris_drawn;

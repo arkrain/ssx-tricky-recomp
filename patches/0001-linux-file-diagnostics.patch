@@ -1,0 +1,38 @@
+diff --git a/src/kernel/kernel_bridge.c b/src/kernel/kernel_bridge.c
+index eb25c6c..4775cc1 100644
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -2697,6 +2697,7 @@ static void bridge_NtCreateFile(void)
+      *
+      * Off unless RECOMP_FMV_HOST is set: it is a substitute for the title's
+      * own output, and that should be a decision rather than a default. */
++#ifdef _WIN32
+     if (g_eax == 0 && getenv("RECOMP_FMV_HOST")) {
+         /* Declared here rather than included: the player lives in xbox_video,
+          * which links xbox_d3d8, and having the kernel include its header
+@@ -2720,11 +2721,14 @@ static void bridge_NtCreateFile(void)
+             xbox_VideoPlayFile(host);
+     }
+ 
++#endif /* _WIN32: the remembered wide host path is Windows-only. */
++
+     /* Paired with the [PATH] line the translation just printed: that says what
+      * was asked for, this says whether it opened. A failed open is not itself
+      * a bug -- a title probing the cache partition before the disc expects one
+      * -- so the status is what separates a probe from a real miss. */
+     {
++#ifdef _WIN32
+         extern uint32_t xbox_LastFileError(void);
+         uint32_t _e = g_eax ? xbox_LastFileError() : 0u;
+         if (g_eax)
+@@ -2735,6 +2739,10 @@ static void bridge_NtCreateFile(void)
+                   : _e ==  3u ? " ERROR_PATH_NOT_FOUND" : "");
+         else
+             fprintf(stderr, "  [FILE] -> 0x%08X\n", g_eax);
++#else
++        fprintf(stderr, "  [FILE] -> NTSTATUS 0x%08X%s\n",
++                g_eax, g_eax ? " FAILED" : "");
++#endif
+     }
+     fflush(stderr);
+ }

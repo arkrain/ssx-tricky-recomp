@@ -1,0 +1,49 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1589,6 +1589,22 @@
+ static struct { uint32_t index, generation; float out[13][4]; } s_vertex_cache[256];
+ static uint32_t s_vertex_generation;
+ static uint32_t s_vertex_inputs=0xffff;
++static struct { uint32_t generation; float value[4]; } s_uniform_input[16];
++static void fetch_vertex_input(unsigned a, uint32_t index, float out[4])
++{
++    /* Zero-stride arrays and disabled arrays are constant within a batch.
++     * Retain exact decoded bits, including defaults and immediate fallback;
++     * the next generation observes guest memory/register edits again. */
++    if(!s_gpu.attr[a].stride || !s_gpu.attr[a].size) {
++        if(s_uniform_input[a].generation!=s_vertex_generation) {
++            if(!fetch_attr(&s_gpu.attr[a],index,s_uniform_input[a].value))
++                memcpy(s_uniform_input[a].value,s_gpu.imm_attr[a],16);
++            s_uniform_input[a].generation=s_vertex_generation;
++        }
++        memcpy(out,s_uniform_input[a].value,16);
++    } else if(!fetch_attr(&s_gpu.attr[a],index,out))
++        memcpy(out,s_gpu.imm_attr[a],16);
++}
+ static void raster_indexed(uint32_t i0, uint32_t i1, uint32_t i2, uint32_t argb)
+ {
+     float p[3][4], uv[3][2];
+@@ -1604,8 +1620,8 @@
+                 s_vertex_cache[slot].index!=indices[v]) {
+                 float in[16][4]={{0}};
+                 for (int a = 0; a < 16; ++a)
+-                    if ((s_vertex_inputs & (1u<<a)) && !fetch_attr(&s_gpu.attr[a], indices[v], in[a]))
+-                        memcpy(in[a], s_gpu.imm_attr[a], sizeof(in[a]));
++                    if (s_vertex_inputs & (1u<<a))
++                        fetch_vertex_input(a,indices[v],in[a]);
+                 if (!ssx_vertex_execute(in, out)) return;
+                 /* NV2A clamps color outputs before clipping/interpolation.
+                  * Saturating only the final fragment changes gradients when
+@@ -1663,7 +1679,11 @@
+         }
+     }
+ 
+-    if (++s_vertex_generation==0) { memset(s_vertex_cache,0,sizeof s_vertex_cache);s_vertex_generation=1; }
++    if (++s_vertex_generation==0) {
++        memset(s_vertex_cache,0,sizeof s_vertex_cache);
++        memset(s_uniform_input,0,sizeof s_uniform_input);
++        s_vertex_generation=1;
++    }
+     s_vertex_inputs=ssx_vertex_input_mask();
+     prepare_textures();
+     uint32_t i;

@@ -1,0 +1,80 @@
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -1769,14 +1769,20 @@
+         if len(ops) < 2:
+             return [f"/* shift: bad operands */"]
+         dst = _fmt_operand_read(ops[0])
+-        cnt = _fmt_operand_read(ops[1])
++        cnt = f"(({_fmt_operand_read(ops[1])}) & 31u)"
+         out = []
+         if self.needs_cf:
+             w = (_operand_width(ops[0]) or 4) * 8
+-            # CF is the last bit shifted out; a zero count leaves CF alone.
+-            bit = f"({cnt}) - 1" if c_op == ">>" else f"{w} - ({cnt})"
+-            out.append(f"if ({cnt}) _cf = (int)((({dst}) >> ({bit})) & 1);")
+-        out.append(_fmt_operand_write(ops[0], f"{dst} {c_op} {cnt}"))
++            # Zero count preserves carry. For narrow operands, do not form
++            # a negative C shift count when SHL shifts every source bit out.
++            if c_op == ">>":
++                carry = f"((uint32_t)({dst}) >> (({cnt}) - 1)) & 1u"
++            else:
++                carry = f"({cnt}) <= {w} ? (((uint32_t)({dst}) >> ({w} - ({cnt}))) & 1u) : 0u"
++            out.append(f"if ({cnt}) _cf = (int)({carry});")
++        # Narrow integer reads promote to signed int in C. Cast before the
++        # shift, and mask the x86 count even when carry is not consumed.
++        out.append(_fmt_operand_write(ops[0], f"(uint32_t)({dst}) {c_op} {cnt}"))
+         return out
+ 
+     def _lift_sar(self, insn, ops):
+--- /dev/null
++++ b/tools/recomp/test_logical_shift_width.py
+@@ -0,0 +1,49 @@
++"""Logical shifts mask x86 counts and avoid narrow signed C promotion."""
++from pathlib import Path
++import shutil, subprocess, tempfile
++import pytest
++from . import config
++from .translator import FunctionTranslator
++
++def test_logical_shift_width_count_and_carry_compiled():
++    cc='/usr/bin/gcc' if Path('/usr/bin/gcc').exists() else shutil.which('clang') or shutil.which('gcc')
++    if not cc and Path(r'C:\Program Files\LLVM\bin\clang.exe').exists():
++        cc=r'C:\Program Files\LLVM\bin\clang.exe'
++    if not cc: pytest.skip('C compiler unavailable')
++    code='''#include <stdint.h>
++    #include <stdio.h>
++    static uint32_t eax,ecx,edx,esp;
++    #define LO8(v) ((uint8_t)(v))
++    #define LO16(v) ((uint16_t)(v))
++    #define SET_LO8(v,x) ((v)=((v)&0xffffff00u)|(uint8_t)(x))
++    #define SET_LO16(v,x) ((v)=((v)&0xffff0000u)|(uint16_t)(x))
++    '''
++    for w,op in ((8,'d2e0'),(16,'66d3e0'),(32,'d3e0'),(108,'d2e8'),(116,'66d3e8'),(132,'d3e8')):
++        b=bytes.fromhex('f9'+op+'83d200c3');base=0x10000
++        config._install([config.Section('.text',base,len(b),0,len(b),True)],entry_point=base,kernel_thunk_addr=base,origin='logical-shift-width')
++        db={base:dict(start=hex(base),end=base+len(b),_addr=base,size=len(b))}
++        code+=FunctionTranslator(b,db).translate_function(base,db[base]).replace('sub_00010000',f'fixture{w}')
++    code+='''int main(void) {
++      const uint32_t values[]={0,1,0x7f,0x80,0xff,0x7fff,0x8000,0xffff,0x7fffffff,0x80000000,0xffffffff,0xa58180ff};
++      const unsigned counts[]={0,1,4,7,8,15,16,31,32,33,255};
++      void (*f[])(void)={fixture8,fixture16,fixture32,fixture108,fixture116,fixture132}; unsigned total=0;
++      for(unsigned k=0;k<6;k++) for(unsigned i=0;i<12;i++) for(unsigned j=0;j<11;j++) {
++        unsigned w=8u<<(k%3);
++        uint32_t mask=w==32?0xffffffffu:(1u<<w)-1, bits=values[i]&mask;
++        unsigned n=counts[j]&31;
++        uint64_t shifted=k<3?((uint64_t)bits<<n):((uint64_t)bits>>n);
++        uint32_t expected=(values[i]&~mask)|((uint32_t)shifted&mask);
++        unsigned carry=!n?1:(k<3?(n<=w?((bits>>(w-n))&1):0):((bits>>(n-1))&1));
++        eax=values[i];ecx=counts[j];edx=0;esp=1024;f[k]();total++;
++        if(eax!=expected||esp!=1028||edx!=carry) {printf("FAIL width=%u input=%08x count=%u actual=%08x expected=%08x carry=%u expected=%u\\n",w,values[i],counts[j],eax,expected,edx,carry);return 1;}
++      }
++      printf("PASS %u compiled logical shift width/count cases\\n",total);return 0;
++    }'''
++
++    with tempfile.TemporaryDirectory() as temp:
++        path=Path(temp)/'test.c'; path.write_text(code)
++        exe=Path(temp)/'test.exe'
++        compiled=subprocess.run([cc,'-O2','-fsanitize=undefined','-fsanitize-undefined-trap-on-error',str(path),'-o',str(exe)],capture_output=True,text=True)
++        assert compiled.returncode==0,compiled.stderr
++        result=subprocess.run([str(exe)],capture_output=True,text=True)
++        assert result.returncode==0,result.stdout+result.stderr

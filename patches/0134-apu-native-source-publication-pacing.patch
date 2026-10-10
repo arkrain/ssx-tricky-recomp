@@ -1,0 +1,38 @@
+--- a/src/apu/apu.h
++++ b/src/apu/apu.h
+@@ -24,6 +24,8 @@
+     void (*write)(MCPXAPUState *,uint32_t,uint32_t,unsigned);
+ } MCPXDspBackend;
+ void mcpx_apu_set_dsp_backend(const MCPXDspBackend *backend);
++/* Optional native producer publication guard; nonzero means a block is ready. */
++void mcpx_apu_set_source_pacing(int (*ready)(void));
+ 
+ /* Configure the runtime's ordinary-RAM bus window before initialization. */
+ void mcpx_apu_set_low_ram(uint8_t *base, size_t size);
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -38,6 +38,10 @@
+ 
+ MCPXAPUState *g_state = NULL;
+ static const MCPXDspBackend *s_dsp_backend;
++static int (*s_source_ready)(void);
++void mcpx_apu_set_source_pacing(int (*ready)(void)) {
++    assert(!g_state);s_source_ready=ready;
++}
+ void mcpx_apu_set_dsp_backend(const MCPXDspBackend *backend) {
+     assert(!g_state);s_dsp_backend=backend;
+ }
+@@ -498,6 +502,13 @@
+          * need continuous frame delivery regardless of APU register state.
+          * The VP/DSP pipeline (se_frame) only runs when registers allow it. */
+         throttle(d);
++        /* A native software source may finish filling its ring after a host
++         * scheduling delay. Wait before consuming stale data; device-queued
++         * PCM continues playing. Release the lock for guest FE/refill work. */
++        while (d->ep_frame_div % 8 == 0 && s_source_ready &&
++               !d->pause_requested && !qatomic_read(&d->exiting) &&
++               !s_source_ready())
++            qemu_cond_timedwait(&d->cond, &d->lock, 1);
+ 
+         int xcntmode = GET_MASK(qatomic_read(&d->regs[NV_PAPU_SECTL]),
+                                 NV_PAPU_SECTL_XCNTMODE);

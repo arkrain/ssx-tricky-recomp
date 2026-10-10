@@ -1,0 +1,129 @@
+--- a/src/kernel/kernel_file.c
++++ b/src/kernel/kernel_file.c
+@@ -27,6 +27,7 @@
+ #include <sys/statvfs.h>
+ #include <dirent.h>
+ #include <fnmatch.h>
++#include <pthread.h>
+ #include <strings.h>
+ #endif
+ 
+@@ -921,10 +922,13 @@
+     return STATUS_SUCCESS;
+ }
+ 
++static void close_dir_context(HANDLE handle);
++
+ NTSTATUS __stdcall xbox_NtClose(HANDLE Handle)
+ {
+     XBOX_TRACE(XBOX_LOG_FILE, "NtClose(handle=%p)", Handle);
+     if (Handle && Handle != INVALID_HANDLE_VALUE) {
++        close_dir_context(Handle);
+         CloseHandle(Handle);
+         return STATUS_SUCCESS;
+     }
+@@ -1151,8 +1155,20 @@
+ } DIR_CONTEXT;
+ 
+ static DIR_CONTEXT s_dir_contexts[MAX_DIR_CONTEXTS];
+-static CRITICAL_SECTION s_dir_cs;
+-static BOOL s_dir_cs_init = FALSE;
++static pthread_mutex_t s_dir_mutex = PTHREAD_MUTEX_INITIALIZER;
++
++static void close_dir_context(HANDLE handle)
++{
++    pthread_mutex_lock(&s_dir_mutex);
++    for (int i = 0; i < MAX_DIR_CONTEXTS; i++) {
++        DIR_CONTEXT *ctx = &s_dir_contexts[i];
++        if (ctx->handle != handle) continue;
++        if (ctx->dir) closedir(ctx->dir);
++        memset(ctx, 0, sizeof(*ctx));
++        break;
++    }
++    pthread_mutex_unlock(&s_dir_mutex);
++}
+ 
+ NTSTATUS __stdcall xbox_NtQueryDirectoryFile(
+     HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext,
+@@ -1169,8 +1185,7 @@
+         return STATUS_INVALID_INFO_CLASS;
+     }
+ 
+-    if (!s_dir_cs_init) { InitializeCriticalSection(&s_dir_cs); s_dir_cs_init = TRUE; }
+-    EnterCriticalSection(&s_dir_cs);
++    pthread_mutex_lock(&s_dir_mutex);
+ 
+     /* Locate or create the per-handle enumeration context. */
+     DIR_CONTEXT* ctx = NULL;
+@@ -1179,7 +1194,7 @@
+     if (!ctx) {
+         for (int i = 0; i < MAX_DIR_CONTEXTS; i++)
+             if (s_dir_contexts[i].handle == NULL) { ctx = &s_dir_contexts[i]; break; }
+-        if (!ctx) { LeaveCriticalSection(&s_dir_cs); return STATUS_INSUFFICIENT_RESOURCES; }
++        if (!ctx) { pthread_mutex_unlock(&s_dir_mutex); return STATUS_INSUFFICIENT_RESOURCES; }
+         ctx->handle = FileHandle;
+         ctx->dir = NULL;
+     }
+@@ -1187,10 +1202,10 @@
+     if (RestartScan || ctx->dir == NULL) {
+         if (ctx->dir) { closedir(ctx->dir); ctx->dir = NULL; }
+         const char* dpath = w32_handle_path(FileHandle);
+-        if (!dpath) { LeaveCriticalSection(&s_dir_cs); return STATUS_UNSUCCESSFUL; }
++        if (!dpath) { pthread_mutex_unlock(&s_dir_mutex); return STATUS_UNSUCCESSFUL; }
+         ctx->dir = opendir(dpath);
+         if (!ctx->dir) {
+-            LeaveCriticalSection(&s_dir_cs);
++            pthread_mutex_unlock(&s_dir_mutex);
+             IoStatusBlock->Status = STATUS_NO_MORE_FILES;
+             return STATUS_NO_MORE_FILES;
+         }
+@@ -1211,10 +1226,8 @@
+     for (;;) {
+         de = readdir(ctx->dir);
+         if (!de) {
+-            closedir(ctx->dir);
+-            ctx->dir = NULL;
+-            ctx->handle = NULL;
+-            LeaveCriticalSection(&s_dir_cs);
++            /* Keep EOF associated with this handle until restart or close. */
++            pthread_mutex_unlock(&s_dir_mutex);
+             IoStatusBlock->Status = STATUS_NO_MORE_FILES;
+             return STATUS_NO_MORE_FILES;
+         }
+@@ -1228,12 +1241,14 @@
+     snprintf(full, sizeof(full), "%s/%s", dpath ? dpath : ".", de->d_name);
+     if (stat(full, &st) != 0)
+         memset(&st, 0, sizeof(st));
+-    LeaveCriticalSection(&s_dir_cs);
++    char entry_name[sizeof(de->d_name)];
++    memcpy(entry_name, de->d_name, sizeof(entry_name));
++    pthread_mutex_unlock(&s_dir_mutex);
+ 
+     PXBOX_FILE_DIRECTORY_INFORMATION entry = (PXBOX_FILE_DIRECTORY_INFORMATION)FileInformation;
+     memset(entry, 0, Length);
+ 
+-    int name_len = (int)strlen(de->d_name);
++    int name_len = (int)strlen(entry_name);
+     entry->NextEntryOffset = 0;
+     entry->FileIndex = 0;
+     unix_to_filetime(st.st_ctime, 0, &entry->CreationTime);
+@@ -1247,7 +1262,7 @@
+ 
+     ULONG header_size = (ULONG)((ULONG_PTR)&((PXBOX_FILE_DIRECTORY_INFORMATION)0)->FileName);
+     if (name_len > 0 && (header_size + (ULONG)name_len) <= Length)
+-        memcpy(entry->FileName, de->d_name, name_len);
++        memcpy(entry->FileName, entry_name, name_len);
+     IoStatusBlock->Status = STATUS_SUCCESS;
+     IoStatusBlock->Information = header_size + name_len;
+     return STATUS_SUCCESS;
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -607,7 +607,7 @@
+     if (raw_handle && raw_handle != 0xDEAD0001u && raw_handle != 0xBEEF0010u) {
+         HANDLE h = bridge_take_handle(raw_handle);
+         if (h && h != INVALID_HANDLE_VALUE)
+-            CloseHandle(h);
++            xbox_NtClose(h);
+     }
+     g_eax = 0; /* STATUS_SUCCESS */
+ }

@@ -1,0 +1,156 @@
+diff --git a/src/usb/ohci.c b/src/usb/ohci.c
+--- a/src/usb/ohci.c
++++ b/src/usb/ohci.c
+@@ -74,11 +74,7 @@
+ #define HcRhDescriptorB         0x4C
+ #define HcRhStatus              0x50
+ #define HcRhPortStatus1         0x54
+-/* Through port 4. The root hub here reports two downstream ports, and the
+- * driver reads four status registers regardless -- so the file has to cover
+- * them or the last one falls outside the array and is answered by the
+- * not-a-register path instead of by an empty port. Same value either way,
+- * reached honestly. */
++/* HC0 exposes all four front-panel ports. */
+ #define OHCI_REG_MAX            0x64
+ 
+ /* HcCommandStatus */
+@@ -111,16 +107,19 @@
+ #define PORT_W_PPS_SET_POWER    0x00000100u   /* SetPortPower                */
+ #define PORT_W_CLEAR_POWER      0x00000200u   /* ClearPortPower              */
+ 
+-/* The MCPX gives each controller a small root hub. Two ports apiece covers
+- * the console's four front sockets, which is what a title enumerates over. */
+-#define OHCI_PORTS              2
++/* Retail front-panel sockets all belong to USB0. Their hardware order is
++ * 3,4,1,2 for console ports1,2,3,4 (xboxdevwiki.net/USB, measured hardware;
++ * also xemu's ui/xemu-input.c port_map). USB1 is not used by retail titles. */
++#define OHCI_MAX_PORTS          4
++static const unsigned s_console_slot[OHCI_MAX_PORTS] = {2,3,0,1};
+ 
+ typedef struct {
+     uint32_t base;                      /* Xbox VA of the register block   */
+     uint32_t reg[OHCI_REG_MAX / 4];
+     unsigned reads, writes, decode_fail;
+     volatile LONG irq_ack_generation;
+-    UsbGamepad pads[OHCI_PORTS];
++    UsbGamepad pads[OHCI_MAX_PORTS];
++    unsigned port_count;
+     unsigned default_port;
+     int      index;
+ } OhciController;
+@@ -226,10 +225,13 @@
+         return;
+ 
+     case HcRhPortStatus1:
+-    case HcRhPortStatus1 + 4: {
++    case HcRhPortStatus1 + 4:
++    case HcRhPortStatus1 + 8:
++    case HcRhPortStatus1 + 12: {
+         /* Writes here are set/clear requests by bit position, not a value to
+          * store. Getting that wrong looks like a port that will not enable. */
+         unsigned port = (aligned - HcRhPortStatus1) / 4;
++        if (port >= hc->port_count) return;
+         uint32_t *ps = &hc->reg[(HcRhPortStatus1 + port * 4) / 4];
+ 
+         if (v & PORT_W_CCS_CLEAR_ENABLE) *ps &= ~PORT_PES;
+@@ -362,7 +364,7 @@
+         return (hc->reg[(HcRhPortStatus1+p*4)/4] & (PORT_CCS|PORT_PES)) ==
+             (PORT_CCS|PORT_PES) ? &hc->pads[p] : NULL;
+     }
+-    for (unsigned p=0; p<OHCI_PORTS; ++p)
++    for (unsigned p=0; p<hc->port_count; ++p)
+         if ((hc->reg[(HcRhPortStatus1+p*4)/4] & (PORT_CCS|PORT_PES)) ==
+             (PORT_CCS|PORT_PES) && hc->pads[p].address == address)
+             return &hc->pads[p];
+@@ -619,18 +621,19 @@
+     memset(hc, 0, sizeof *hc);
+     hc->base  = base;
+     hc->index = index;
+-    for (unsigned p=0; p<OHCI_PORTS; ++p)
+-        hc->pads[p].input_port = (unsigned)index*OHCI_PORTS+p;
++    hc->port_count = index==0 ? 4 : 2;
++    for (unsigned p=0; p<hc->port_count; ++p)
++        hc->pads[p].input_port = index==0 ? s_console_slot[p] : 4+p;
+ 
+     hc->reg[HcRevision / 4]       = 0x00000010u;   /* OHCI 1.0             */
+     hc->reg[HcFmInterval / 4]     = 0x27782EDFu;   /* 11999, FSMPS default */
+     hc->reg[HcPeriodicStart / 4]  = 0x00003E67u;   /* 90% of the frame     */
+     hc->reg[HcLSThreshold / 4]    = 0x00000628u;
+ 
+-    /* Root hub: OHCI_PORTS downstream, ports always powered, no over-current
++    /* Root hub: ports always powered, no over-current
+      * reporting. NoPowerSwitching keeps a driver from waiting on a power-on
+      * sequence that has nothing to switch. */
+-    hc->reg[HcRhDescriptorA / 4]  = (uint32_t)OHCI_PORTS | (1u << 9);
++    hc->reg[HcRhDescriptorA / 4]  = hc->port_count | (1u << 9);
+     hc->reg[HcRhDescriptorB / 4]  = 0x00000000u;
+     hc->reg[HcRhStatus / 4]       = 0x00000000u;
+ 
+@@ -648,8 +651,26 @@
+      * A console detects the port change after the controller is running, so
+      * that is what the controller thread does: it waits for operational with
+      * the interrupt unmasked, and only then plugs the device in. */
+-    hc->reg[HcRhPortStatus1 / 4]       = PORT_PPS;
+-    hc->reg[(HcRhPortStatus1 + 4) / 4] = PORT_PPS;
++    for (unsigned p=0; p<hc->port_count; ++p)
++        hc->reg[(HcRhPortStatus1+p*4)/4] = PORT_PPS;
++}
++
++/* Announce host-slot connectivity on the correct root-hub hardware port. */
++static void ohci_update_connections(OhciController *hc, unsigned present)
++{
++    for (unsigned p=0; p<hc->port_count; ++p) {
++        uint32_t *ps=&hc->reg[(HcRhPortStatus1+p*4)/4];
++        unsigned slot=hc->pads[p].input_port;
++        int connected=!!(present & (1u<<slot));
++        if (connected != !!(*ps & PORT_CCS)) {
++            if (connected) *ps |= PORT_CCS;
++            else *ps &= ~(PORT_CCS|PORT_PES);
++            *ps |= PORT_CSC;
++            hc->reg[HcInterruptStatus/4] |= INTR_RHSC;
++            fprintf(stderr,"  [OHCI%d] device %s on hardware port %u (controller %u)\n",
++                    hc->index,connected ? "arriving" : "removed",p+1,slot+1);
++        }
++    }
+ }
+ 
+ /* The controller, running on its own thread.
+@@ -714,21 +735,13 @@
+         if (!(enable & INTR_MIE))
+             continue;
+ 
+-        /* Port zero retains keyboard fallback. Additional pads appear only
+-         * when the host input backend has a controller in their stable slot. */
++        /* Host slot0 retains keyboard fallback; other slots follow SDL.
++         * Convert through the hardware wiring before announcing port changes. */
+         if (enable & INTR_RHSC) {
+-            for (unsigned p=0; p<OHCI_PORTS; ++p) {
+-                uint32_t *ps=&hc->reg[(HcRhPortStatus1+p*4)/4];
+-                int connected=(p==0) || xbox_InputIsConnected(p);
+-                if (connected != !!(*ps & PORT_CCS)) {
+-                    if (connected) *ps |= PORT_CCS;
+-                    else *ps &= ~(PORT_CCS|PORT_PES);
+-                    *ps |= PORT_CSC;
+-                    hc->reg[HcInterruptStatus/4] |= INTR_RHSC;
+-                    fprintf(stderr,"  [OHCI0] device %s on port %u\n",
+-                            connected ? "arriving" : "removed",p+1);
+-                }
+-            }
++            unsigned present=1;
++            for (unsigned slot=1; slot<4; ++slot)
++                if (xbox_InputIsConnected(slot)) present |= 1u<<slot;
++            ohci_update_connections(hc,present);
+         }
+ 
+         /* Advance both frame counters together. The guest uses HCCA when
+@@ -839,8 +852,8 @@
+ #endif
+ 
+     fprintf(stderr, "  OHCI: two controllers at 0x%08X and 0x%08X, "
+-                    "%d ports each, HC0 keyboard/controller ports 1 and 2\n",
+-            XBOX_OHCI0_BASE, XBOX_OHCI1_BASE, OHCI_PORTS);
++                    "HC0 %u front-panel ports, HC1 %u unused ports\n",
++            XBOX_OHCI0_BASE, XBOX_OHCI1_BASE, s_hc[0].port_count, s_hc[1].port_count);
+     fflush(stderr);
+ 
+     {

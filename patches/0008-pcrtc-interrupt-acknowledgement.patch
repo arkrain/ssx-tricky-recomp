@@ -1,0 +1,58 @@
+diff --git a/src/kernel/xbox_memory_layout.c b/src/kernel/xbox_memory_layout.c
+index 0e17178..515dd60 100644
+--- a/src/kernel/xbox_memory_layout.c
++++ b/src/kernel/xbox_memory_layout.c
+@@ -180,11 +180,11 @@ static const struct { uint32_t offset; uint32_t busy_mask; } NV2A_ACK[] = {
+      *
+      * Holding them at zero is correct rather than convenient: nothing here
+      * ever raises a GPU interrupt, so "none pending" is the truth. */
+-    { 0x000100, 0xFFFFFFFFu },  /* PMC_INTR_0    */
++    { 0x000100, 0xFEFFFFFFu },  /* PMC: PCRTC cleared by guest W1C */
+     { 0x001100, 0xFFFFFFFFu },  /* PBUS_INTR_0   */
+     { 0x002100, 0xFFFFFFFFu },  /* PFIFO_INTR_0  */
+     { 0x400100, 0xFFFFFFFFu },  /* PGRAPH_INTR   */
+-    { 0x600100, 0xFFFFFFFFu },  /* PCRTC_INTR_0  */
++    /* PCRTC_INTR_0 is acknowledged by generated guest stores. */
+ };
+ 
+ /*
+diff --git a/templates/runtime/recomp_types.h b/templates/runtime/recomp_types.h
+index 75030f7..1527417 100644
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -371,6 +371,22 @@ void recomp_trace_esp(const char *name, const char *tag);
+ #define MEM16(addr)  (*(volatile uint16_t *)XBOX_PTR(addr))
+ #define MEM32(addr)  (*(volatile uint32_t *)XBOX_PTR(addr))
+ 
++/* PCRTC interrupt status is write-one-to-clear, not ordinary RAM. Keep
++ * the summary pending until guest acknowledgement, including across DPCs. */
++static inline void RECOMP_STORE32(uint32_t addr, uint32_t value)
++{
++    if (addr == 0xFD600100u || addr == 0xFD600140u) {
++        if (addr == 0xFD600100u) MEM32(addr) &= ~value;
++        else MEM32(addr) = value;
++        if (MEM32(0xFD600100u) & MEM32(0xFD600140u) & 1u)
++            MEM32(0xFD000100u) |= 1u << 24;
++        else
++            MEM32(0xFD000100u) &= ~(1u << 24);
++    } else {
++        MEM32(addr) = value;
++    }
++}
++
+ /** Signed memory reads. */
+ #define SMEM8(addr)  (*(volatile int8_t   *)XBOX_PTR(addr))
+ #define SMEM16(addr) (*(volatile int16_t  *)XBOX_PTR(addr))
+diff --git a/tools/recomp/lifter.py b/tools/recomp/lifter.py
+index d788d9f..278e047 100644
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -260,6 +260,8 @@ def _fmt_mem_write(op, value_expr):
+     """Format writing to a memory operand."""
+     accessor = _mem_accessor(op.mem_size)
+     addr = _fmt_mem(op)
++    if op.mem_size == 4:
++        return f"RECOMP_STORE32({addr}, {value_expr});"
+     return f"{accessor}({addr}) = {value_expr};"
+ 
+ 

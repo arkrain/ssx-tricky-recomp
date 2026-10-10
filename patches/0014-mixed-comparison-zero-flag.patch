@@ -1,0 +1,101 @@
+--- a/tools/recomp/translator.py
++++ b/tools/recomp/translator.py
+@@ -36,6 +36,10 @@
+     """
+     if not states or any(not state or not state[0] for state in states):
+         return None
++    # Mixed CMP/TEST paths share only the explicitly captured zero flag.
++    kinds = {state[0] for state in states}
++    if kinds <= {"cmp", "test", "zero_snapshot"} and len(kinds) > 1:
++        return ("zero_snapshot", [])
+     first = states[0]
+     if all(state == first for state in states[1:]):
+         return first
+@@ -901,6 +905,7 @@
+         if any(insn.mnemonic in ("cmp", "test", "bsf", "bsr", "cmpxchg",
+                                  "lock cmpxchg", "inc", "dec")
+                for insn in instructions):
++            lines.append("    int _zf = 0; (void)_zf;")
+             lines.append("    uint32_t _fa = 0, _fb = 0;")
+             lines.append("    int32_t _fas = 0, _fbs = 0;")
+             lines.append("    (void)_fa; (void)_fb; (void)_fas; (void)_fbs;")
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -443,6 +443,12 @@
+     if not cond_info:
+         return None
+     cmp_macro, test_macro, desc = cond_info
++    if flag_setter == "zero_snapshot":
++        if jcc in ("je", "jz"):
++            return "_zf", desc
++        if jcc in ("jne", "jnz"):
++            return "!_zf", desc
++        return None
+ 
+     # A cmp/test that is not fused with its jcc snapshots its operands into
+     # _fa/_fb (zero-extended) and _fas/_fbs (sign-extended) at the point the
+@@ -1849,6 +1855,8 @@
+             f"_fas = (int32_t){sx}(_fa); _fbs = (int32_t){sx}(_fb);"
+             f" /* {kind} {lhs}, {rhs} ({size*8}-bit) */",
+         ]
++        out.append("_zf = (_fa == _fb);" if kind == "cmp"
++                   else "_zf = ((_fa & _fb) == 0);")
+         # A cmp sets the carry flag too, and sbb/adc/setc/rcl read it directly
+         # rather than through _fa/_fb. Leaving CF alone here let those pick up
+         # whatever an earlier instruction had left in it.
+--- a/tools/recomp/test_flag_join.py
++++ b/tools/recomp/test_flag_join.py
+@@ -28,12 +28,51 @@
+ def test_unknown_path_is_not_guessed():
+     assert _merge_flag_states([None, ('cmp', [])]) is None
+ 
+-def test_mixed_operations_are_not_guessed():
++def test_mixed_operations_preserve_only_zero():
+     a = Operand(type='reg', reg='eax')
+     b = Operand(type='reg', reg='edx')
+-    assert _merge_flag_states([('cmp', [a, b]), ('test', [a, b])]) is None
++    assert _merge_flag_states([('cmp', [a, b]), ('test', [a, b])]) == ('zero_snapshot', [])
+ 
+ def test_mixed_widths_are_not_guessed():
+     wide = [Operand(type='reg', reg='eax'), Operand(type='reg', reg='edx')]
+     narrow = [Operand(type='reg', reg='al'), Operand(type='reg', reg='dl')]
+     assert _merge_flag_states([('cmp', wide), ('cmp', narrow)]) is None
++
++
++def test_mixed_cmp_test_join_compiled(tmp_path):
++    """Archive lookup joins an index CMP and a filename TEST before JE."""
++    import shutil
++    import subprocess
++    import pytest
++    cc = shutil.which('cc')
++    if not cc:
++        pytest.skip('C compiler unavailable')
++    image = bytes.fromhex('85c9740539d0eb039085f3'
++                          '7406b800000000c3b801000000c3')
++    config._install([config.Section('.text', BASE, len(image), 0, len(image), True)],
++                    entry_point=BASE, kernel_thunk_addr=BASE, origin='mixed-flags')
++    db = {BASE: {'start': hex(BASE), 'end': BASE + len(image),
++                 '_addr': BASE, 'size': len(image)}}
++    generated = FunctionTranslator(image, db).translate_function(BASE, db[BASE])
++    assert 'if (_zf)' in generated
++    source = tmp_path / 'join.c'
++    source.write_text('''#include <stdint.h>
++static uint32_t eax,ebx,ecx,edx,esi,esp;
++#define TEST_Z(a,b) (((a)&(b))==0)
++''' + generated + '''
++int main(void) {
++    const uint32_t values[] = {0,1,2,0x80000000u,0xffffffffu};
++    for (unsigned path=0;path<2;path++)
++      for (unsigned a=0;a<5;a++) for (unsigned b=0;b<5;b++) {
++        eax=ebx=values[a]; edx=esi=values[b]; ecx=path; esp=1024;
++        unsigned expected=path ? values[a]==values[b] : (values[a]&values[b])==0;
++        sub_00010000();
++        if (eax!=expected || esp!=1028) return 1;
++      }
++    return 0;
++}
++''')
++    exe = tmp_path / 'join'
++    result = subprocess.run([cc, str(source), '-o', str(exe)], capture_output=True, text=True)
++    assert result.returncode == 0, result.stderr
++    subprocess.run([str(exe)], check=True)

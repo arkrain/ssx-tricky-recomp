@@ -1,0 +1,190 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -25,6 +25,7 @@
+  * <prefix>NNN.bmp, so the result can be looked at without a display.
+  */
+ #include "nv2a_vertex.h"
++#include "nv2a_combiner.h"
+ #include <math.h>
+ #include <stdio.h>
+ #include <stdint.h>
+@@ -272,6 +273,11 @@
+  * actually programs is what decides which ones are worth implementing. */
+ #define NV_TEX_FIRST 0x1B00
+ #define NV_TEX_LAST  0x1BFC
++static uint32_t s_render_reg[0x2000/4];
++static float s_triangle_color[3][2][4];
++static int s_triangle_colors;
++static float s_triangle_tex[3][4][4];
++static Texture s_extra_texture[4];
+ static uint32_t s_tex_reg[(NV_TEX_LAST - NV_TEX_FIRST) / 4 + 1];
+ static uint8_t  s_tex_set[(NV_TEX_LAST - NV_TEX_FIRST) / 4 + 1];
+ 
+@@ -726,31 +732,31 @@
+     }
+ }
+ 
+-static int sample_texture(int32_t tex_u, int32_t tex_v, uint32_t *argb)
++static int sample_texture_for(const Texture *t, int32_t tex_u, int32_t tex_v, uint32_t *argb)
+ {
+     const uint8_t *mem = (const uint8_t *)xbox_GetMemoryOffset();
+     const uint8_t *p;
+     uint32_t fmt, u, v;
+ 
+-    if (!s_gpu.tex.valid)
++    if (!t->valid)
+         return 0;
+-    u = wrap_coord(tex_u, s_gpu.tex.width,  s_gpu.tex.addr_u);
+-    v = wrap_coord(tex_v, s_gpu.tex.height, s_gpu.tex.addr_v);
+-
+-    fmt = s_gpu.tex.color;
++    u = wrap_coord(tex_u, t->width,  t->addr_u);
++    v = wrap_coord(tex_v, t->height, t->addr_v);
++
++    fmt = t->color;
+     if (d3d8_format_dxt_block_bytes(fmt))
+-        return d3d8_dxt_decode_texel(mem + s_gpu.tex.offset, fmt, u, v,
+-                                     s_gpu.tex.width, argb);
++        return d3d8_dxt_decode_texel(mem + t->offset, fmt, u, v,
++                                     t->width, argb);
+     if (d3d8_format_is_swizzled(fmt)) {
+         /* Morton order: a texel's index is interleaved from x and y instead of
+          * v*pitch + u, so index from the base of the image. The switch below
+          * casts to each format's own width, which makes that index a texel
+          * index for every one of them. */
+         fmt = linear_twin(fmt);
+-        p = mem + s_gpu.tex.offset;
+-        u = swizzle_offset(u, v, s_gpu.tex.width, s_gpu.tex.height);
++        p = mem + t->offset;
++        u = swizzle_offset(u, v, t->width, t->height);
+     } else {
+-        p = mem + s_gpu.tex.offset + (size_t)v * s_gpu.tex.pitch;
++        p = mem + t->offset + (size_t)v * t->pitch;
+     }
+ 
+     switch (fmt) {
+@@ -830,6 +836,22 @@
+ 
+     default:
+         return 0;
++    }
++}
++
++static int sample_texture(int32_t u,int32_t v,uint32_t *color) {
++    return sample_texture_for(&s_gpu.tex,u,v,color);
++}
++static void prepare_textures(void) {
++    s_extra_texture[0]=s_gpu.tex;
++    for(unsigned i=1;i<4;i++) {
++        const uint32_t *r=s_tex_reg+i*16;
++        Texture *t=&s_extra_texture[i];
++        t->offset=dma_resolve(r[0]); t->color=(r[1]>>8)&255;
++        t->pitch=r[4]>>16;t->addr_u=r[2]&15;t->addr_v=(r[2]>>8)&15;
++        t->width=tex_size_from_format(t->color)?1u<<((r[1]>>20)&15):r[7]>>16;
++        t->height=tex_size_from_format(t->color)?1u<<((r[1]>>24)&15):r[7]&65535;
++        t->valid=(r[3]&(1u<<30)) && t->offset && t->width && t->height && (tex_size_from_format(t->color)||t->pitch);
+     }
+ }
+ 
+@@ -1041,6 +1063,7 @@
+                || (w0 <= 0 && w1 <= 0 && w2 <= 0)))
+                 continue;
+             float z = (w1 * a[2] + w2 * b[2] + w0 * c[2]) / area;
++            uint32_t texel=0xff000000;
+             if (textured) {
+                 /* Shader positions are screen-space but w retains clip w.
+                  * Interpolate u/w and v/w, then divide by interpolated 1/w. */
+@@ -1052,13 +1075,39 @@
+                 float su = (q0 * uv[0][0] + q1 * uv[1][0] + q2 * uv[2][0]) / q;
+                 float sv = (q0 * uv[0][1] + q1 * uv[1][1] + q2 * uv[2][1]) / q;
+                 if (!isfinite(su) || !isfinite(sv) || fabsf(su) > 2147483000.0f || fabsf(sv) > 2147483000.0f) continue;
+-                uint32_t texel;
+-                if (sample_texture((int32_t)floorf(su), (int32_t)floorf(sv), &texel)) {
+-                    fragment(mem, bpp, x, y, z, texel);
+-                    continue;
++                sample_texture((int32_t)floorf(su), (int32_t)floorf(sv), &texel);
++            }
++            uint32_t shaded=textured?texel:argb;
++            if (s_render_reg[0x1e60/4]&15) {
++                float diffuse[4],specular[4]={0,0,0,1},tex[4][4]={{0,0,0,1},{0,0,0,1},{0,0,0,1},{0,0,0,1}};
++                rc_unpack(argb,diffuse);rc_unpack(texel,tex[0]);
++                if (s_triangle_colors) for(int k=0;k<4;k++) {
++                    diffuse[k]=(w1*s_triangle_color[0][0][k]+w2*s_triangle_color[1][0][k]+w0*s_triangle_color[2][0][k])/area;
++                    specular[k]=(w1*s_triangle_color[0][1][k]+w2*s_triangle_color[1][1][k]+w0*s_triangle_color[2][1][k])/area;
+                 }
++                if (s_triangle_colors) {
++                    float weight[3]={w1/a[3],w2/b[3],w0/c[3]};
++                    float total=weight[0]+weight[1]+weight[2];
++                    if (!isfinite(total)||total==0) continue;
++                    for(int st=0;st<4;st++) {
++                        unsigned mode=(s_render_reg[0x1e70/4]>>(st*5))&31;
++                        if (!mode) { tex[st][0]=tex[st][1]=tex[st][2]=0;tex[st][3]=1;continue; }
++                        float coord[4];
++                        for(int k=0;k<4;k++) coord[k]=(weight[0]*s_triangle_tex[0][st][k]+weight[1]*s_triangle_tex[1][st][k]+weight[2]*s_triangle_tex[2][st][k])/total;
++                        if(mode==4) {memcpy(tex[st],coord,sizeof coord);continue;}
++                        if(mode!=1 || coord[3]==0)continue;
++                        Texture *t=&s_extra_texture[st];
++                        float u=coord[0]/coord[3],v=coord[1]/coord[3];
++                        if(tex_size_from_format(t->color)){u*=t->width;v*=t->height;}
++                        uint32_t pixel=0xff000000;
++                        if(isfinite(u)&&isfinite(v)&&fabsf(u)<2147483000.f&&fabsf(v)<2147483000.f)
++                            sample_texture_for(t,(int32_t)floorf(u),(int32_t)floorf(v),&pixel);
++                        rc_unpack(pixel,tex[st]);
++                    }
++                }
++                shaded=rc_fragment(s_render_reg,diffuse,specular,tex);
+             }
+-            fragment(mem, bpp, x, y, z, argb);
++            fragment(mem, bpp, x, y, z, shaded);
+         }
+     }
+     s_gpu.tris_drawn++;
+@@ -1236,6 +1285,7 @@
+ {
+     float p[3][4], uv[3][2];
+     int textured;
++    s_triangle_colors=0;
+ 
+     if (ssx_vertex_active()) {
+         uint32_t indices[3] = {i0, i1, i2};
+@@ -1246,6 +1296,10 @@
+                     memcpy(in[a], s_gpu.imm_attr[a], sizeof(in[a]));
+             if (!ssx_vertex_execute(in, out)) return;
+             memcpy(p[v], out[0], sizeof(p[v]));
++            memcpy(s_triangle_color[v][0],out[3],16);
++            memcpy(s_triangle_color[v][1],out[4],16);
++            s_triangle_colors=1;
++            memcpy(s_triangle_tex[v],out[9],sizeof s_triangle_tex[v]);
+             uv[v][0] = out[9][0]; uv[v][1] = out[9][1];
+             if (tex_size_from_format(s_gpu.tex.color)) {
+                 uv[v][0] *= s_gpu.tex.width; uv[v][1] *= s_gpu.tex.height;
+@@ -1270,6 +1324,21 @@
+ 
+ static void raster_batch(void)
+ {
++    if (getenv("SSX_COMBINER_TRACE")) {
++        static unsigned count; static uint32_t hashes[32];
++        uint32_t h=s_render_reg[0x1e60/4];
++        for (unsigned a=0x260; a<=0x28c; a+=4) h=h*33+s_render_reg[a/4];
++        for (unsigned a=0xa60; a<0xae0; a+=4) h=h*33+s_render_reg[a/4];
++        for (unsigned a=0x1e40; a<0x1e64; a+=4) h=h*33+s_render_reg[a/4];
++        unsigned seen=0; for(;seen<count;seen++) if(hashes[seen]==h)break;
++        if (seen==count && count<32) {
++            hashes[count++]=h;
++            fprintf(stderr,"[COMB] ctl=%08x final=%08x,%08x texmode=%08x tex=%08x blend=%u/%x/%x\n",s_render_reg[0x1e60/4],s_render_reg[0x288/4],s_render_reg[0x28c/4],s_render_reg[0x1e70/4],s_gpu.tex.offset,s_gpu.blend_enable,s_gpu.blend_src,s_gpu.blend_dst);
++            for(unsigned a=0;a<4;a++) fprintf(stderr,"[COMBSTAGE] %u rgb=%08x/%08x alpha=%08x/%08x factor=%08x/%08x\n",a,s_render_reg[0xac0/4+a],s_render_reg[0x1e40/4+a],s_render_reg[0x260/4+a],s_render_reg[0xaa0/4+a],s_render_reg[0xa60/4+a],s_render_reg[0xa80/4+a]);
++        }
++    }
++
++    prepare_textures();
+     uint32_t i;
+     uint32_t before = s_gpu.tris_drawn;
+ 
+@@ -1678,6 +1747,7 @@
+ 
+ void nv2a_pb_exec_method(uint32_t subch, uint32_t method, uint32_t param)
+ {
++    if (method < 0x2000 && !(method & 3)) s_render_reg[method/4] = param;
+     static int inited;
+     static uint32_t semaphore_dma, semaphore_offset;
+     if (!inited) {

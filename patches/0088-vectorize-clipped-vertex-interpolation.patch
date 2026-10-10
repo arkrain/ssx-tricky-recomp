@@ -1,0 +1,26 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1456,6 +1456,14 @@
+ /* Clip shader geometry before perspective division. The vertex program has
+  * already applied the viewport/divide, but retains clip W in position.w.
+  * Reconstruct homogeneous window coordinates and interpolate every varying. */
++static void interpolate_clip_vertex(float *restrict out, const float *a,
++                                    const float *b, double t)
++{
++    /* Source and destination polygons occupy separate banks. Express that
++     * guarantee so the compiler can vectorize without an alias check, while
++     * preserving double intermediate precision and operation order. */
++    for(int k=0;k<28;k++)out[k]=(float)(a[k]+t*((double)b[k]-a[k]));
++}
+ static void raster_shader_triangle(float p[3][4], uint32_t argb)
+ {
+     float homogeneous[3][4];
+@@ -1529,7 +1537,7 @@
+             if((da>=0)!=(db>=0)) {
+                 if(n>=10)return;
+                 double t=(double)da/((double)da-db);
+-                for(int k=0;k<28;k++) poly[dst][n][k]=(float)(a[k]+t*((double)b[k]-a[k]));
++                interpolate_clip_vertex(poly[dst][n],a,b,t);
+                 n++;
+             }
+         }

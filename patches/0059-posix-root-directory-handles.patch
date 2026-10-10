@@ -1,0 +1,85 @@
+--- a/src/kernel/kernel_file.c
++++ b/src/kernel/kernel_file.c
+@@ -776,6 +776,23 @@
+     }
+ }
+ 
++/* RootDirectory is a directory handle, not the process working directory. */
++static BOOL posix_object_path(PXBOX_OBJECT_ATTRIBUTES attrs, char *path, size_t size)
++{
++    const char *name = get_xbox_path(attrs);
++    if (!name) return FALSE;
++    if (attrs->RootDirectory && name[0] != '\\' && name[0] != '/' &&
++            !(name[0] && name[1] == ':')) {
++        const char *root = w32_handle_path(attrs->RootDirectory);
++        if (!root) return FALSE;
++        int n = snprintf(path, size, "%s/%s", root, name);
++        if (n < 0 || (size_t)n >= size) return FALSE;
++        for (char *p = path; *p; p++) if (*p == '\\') *p = '/';
++        return xbox_resolve_host_case(path, size);
++    }
++    return xbox_translate_path(name, path, (DWORD)size);
++}
++
+ NTSTATUS __stdcall xbox_NtCreateFile(
+     PHANDLE FileHandle, ACCESS_MASK DesiredAccess,
+     PXBOX_OBJECT_ATTRIBUTES ObjectAttributes, PXBOX_IO_STATUS_BLOCK IoStatusBlock,
+@@ -789,7 +806,7 @@
+         return STATUS_INVALID_PARAMETER;
+ 
+     const char* xbox_path = get_xbox_path(ObjectAttributes);
+-    if (!xbox_path || !xbox_translate_path(xbox_path, host_path, MAX_PATH)) {
++    if (!xbox_path || !posix_object_path(ObjectAttributes, host_path, MAX_PATH)) {
+         xbox_log(XBOX_LOG_ERROR, XBOX_LOG_FILE, "NtCreateFile: path translation failed");
+         return STATUS_OBJECT_PATH_NOT_FOUND;
+     }
+@@ -918,7 +935,7 @@
+ {
+     char host_path[MAX_PATH];
+     const char* xbox_path = get_xbox_path(ObjectAttributes);
+-    if (!xbox_path || !xbox_translate_path(xbox_path, host_path, MAX_PATH))
++    if (!xbox_path || !posix_object_path(ObjectAttributes, host_path, MAX_PATH))
+         return STATUS_OBJECT_PATH_NOT_FOUND;
+     XBOX_TRACE(XBOX_LOG_FILE, "NtDeleteFile: %s", host_path);
+     if (unlink(host_path) == 0) return STATUS_SUCCESS;
+@@ -1110,7 +1127,7 @@
+     if (!FileInformation)
+         return STATUS_INVALID_PARAMETER;
+     const char* xbox_path = get_xbox_path(ObjectAttributes);
+-    if (!xbox_path || !xbox_translate_path(xbox_path, host_path, MAX_PATH))
++    if (!xbox_path || !posix_object_path(ObjectAttributes, host_path, MAX_PATH))
+         return STATUS_OBJECT_PATH_NOT_FOUND;
+     if (stat(host_path, &st) != 0)
+         return STATUS_OBJECT_NAME_NOT_FOUND;
+--- a/src/kernel/kernel_path.c
++++ b/src/kernel/kernel_path.c
+@@ -505,7 +505,7 @@
+ /* FATX paths are case-insensitive. Preserve exact matches first, then resolve
+  * each existing component against the host directory. A missing suffix is
+  * retained so file/directory creation keeps the requested spelling. */
+-static BOOL resolve_host_case(char *path, size_t capacity)
++BOOL xbox_resolve_host_case(char *path, size_t capacity)
+ {
+     struct stat st;
+     if (!stat(path, &st)) return TRUE;
+@@ -690,7 +690,7 @@
+                 host_path_buf[--n] = '\0';
+         }
+ 
+-        if (!resolve_host_case(host_path_buf, buf_size)) return FALSE;
++        if (!xbox_resolve_host_case(host_path_buf, buf_size)) return FALSE;
+         XBOX_TRACE(XBOX_LOG_PATH, "%s -> %s", xbox_path, host_path_buf);
+         return TRUE;
+     }
+--- a/src/kernel/kernel.h
++++ b/src/kernel/kernel.h
+@@ -542,6 +542,9 @@
+ /* Host path produced by the most recent xbox_translate_path call. */
+ const wchar_t *xbox_LastHostPath(void);
+ 
++#ifndef _WIN32
++BOOL xbox_resolve_host_case(char *path, size_t capacity);
++#endif
+ BOOL xbox_translate_path(const char* xbox_path, xbox_host_char* host_path_buf, DWORD buf_size);
+ 
+ /* ============================================================================

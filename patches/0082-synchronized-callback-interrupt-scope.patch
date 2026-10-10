@@ -1,0 +1,24 @@
+--- a/src/kernel/kernel_sync.c
++++ b/src/kernel/kernel_sync.c
+@@ -590,7 +590,9 @@
+         return FALSE;
+ 
+     xbox_InterruptEnter(Interrupt);
++    KIRQL previous_irql = xbox_EnterIsr();
+     BOOLEAN result = routine(SynchronizeContext);
++    xbox_LeaveIsr(previous_irql);
+     xbox_InterruptLeave(Interrupt);
+     return result;
+ }
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -1856,7 +1856,9 @@
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = context;
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = 0;
+     xbox_InterruptEnter(XBOX_TO_NATIVE(interrupt));
++    KIRQL previous_irql = xbox_EnterIsr();
+     fn();
++    xbox_LeaveIsr(previous_irql);
+     xbox_InterruptLeave(XBOX_TO_NATIVE(interrupt));
+     /* g_eax is whatever the routine returned, which is this call's result. */
+ }

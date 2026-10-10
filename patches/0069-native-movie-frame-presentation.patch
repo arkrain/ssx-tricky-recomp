@@ -1,0 +1,38 @@
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -226,7 +226,15 @@
+ static pthread_mutex_t fb_lock = PTHREAD_MUTEX_INITIALIZER;
+ static uint32_t fb_address, fb_stride;
+ static int fb_started;
+-static uint32_t fb_completed[640 * 480];
++static uint32_t fb_completed[640 * 480], movie_pixels[640 * 480];
++static int movie_active;
++void xbox_FramebufferMovieFrame(const uint32_t *pixels)
++{
++    pthread_mutex_lock(&fb_lock);
++    if(pixels)memcpy(movie_pixels,pixels,sizeof movie_pixels);
++    movie_active=pixels!=NULL;
++    pthread_mutex_unlock(&fb_lock);
++}
+ 
+ void xbox_FramebufferWindowSet(uint32_t address, uint32_t pitch)
+ {
+@@ -284,14 +292,16 @@
+         }
+         pthread_mutex_lock(&fb_lock);
+         uint32_t address = fb_address, pitch = fb_stride;
++        int movie = movie_active;
+         pthread_mutex_unlock(&fb_lock);
+         uint64_t end = (uint64_t)address + (uint64_t)pitch * 480;
+         int valid = (address >= 0x1000 && end <= 0x04000000u) ||
+                     (address >= 0x80000000u && end <= 0x84000000ull);
+-        if (valid && (pitch == 640 * 4 || pitch == 640 * 2)) {
++        if (movie || (valid && (pitch == 640 * 4 || pitch == 640 * 2))) {
+             pthread_mutex_lock(&fb_lock);
+             for (unsigned y = 0; y < 480; ++y)
+-                memcpy((uint8_t *)surface->pixels + y * surface->pitch, fb_completed + y * 640, 2560);
++                memcpy((uint8_t *)surface->pixels + y * surface->pitch,
++                       (movie_active ? movie_pixels : fb_completed) + y * 640, 2560);
+             pthread_mutex_unlock(&fb_lock);
+             SDL_UpdateTexture(texture, NULL, surface->pixels, surface->pitch);
+             SDL_RenderClear(renderer);

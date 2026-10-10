@@ -1,0 +1,18 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1552,6 +1552,15 @@
+ 
+     raster_batch();
+ 
++    /* Array fetches leave the final vertex's values in the current attribute
++     * registers. A following draw can disable an array and reuse that value.
++     * This state transition must also happen during diagnostic skipped frames. */
++    for (int a = 0; a < NV_VERTEX_ATTRS; ++a) {
++        float value[4];
++        if (fetch_attr(&s_gpu.attr[a], s_gpu.idx[s_gpu.idx_count-1], value))
++            memcpy(s_gpu.imm_attr[a], value, sizeof value);
++    }
++
+     if (getenv("RECOMP_PB_EXEC_VERBOSE")) {
+         static int shown;
+         if (shown++ < 6) {

@@ -1,0 +1,70 @@
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -20,6 +20,7 @@
+  */
+ 
+ #include "apu_state.h"
++#include "apu_timing.h"
+ #include "apu.h"
+ #include "apu_xaudio2.h"
+ #include "fpconv.h"
+@@ -393,21 +394,18 @@
+ 
+     int64_t now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+ 
+-    if (d->next_frame_time_us == 0 ||
+-        now_us - d->next_frame_time_us > EP_FRAME_US) {
+-        d->next_frame_time_us = now_us;
+-    }
++    apu_deadline_prepare(&d->next_frame_time_thirds_us, now_us);
+ 
+     while (!d->pause_requested) {
+         now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+-        int64_t remaining_ms = (d->next_frame_time_us - now_us) / 1000;
++        int64_t remaining_ms = apu_deadline_remaining_ms(d->next_frame_time_thirds_us, now_us);
+         if (remaining_ms > 0) {
+             qemu_cond_timedwait(&d->cond, &d->lock, (int)remaining_ms);
+         } else {
+             break;
+         }
+     }
+-    d->next_frame_time_us += EP_FRAME_US;
++    apu_deadline_advance(&d->next_frame_time_thirds_us);
+ 
+     d->sleep_acc_us += (int)(qemu_clock_get_us(QEMU_CLOCK_REALTIME) - now_us);
+ }
+--- a/src/apu/apu_state.h
++++ b/src/apu/apu_state.h
+@@ -482,7 +482,7 @@
+     int sleep_acc_us;
+     int frame_count;
+     int64_t frame_count_time_ms;
+-    int64_t next_frame_time_us;
++    int64_t next_frame_time_thirds_us;
+ 
+     struct {
+         struct {
+--- /dev/null
++++ b/src/apu/apu_timing.h
+@@ -0,0 +1,21 @@
++#ifndef SSX_APU_TIMING_H
++#define SSX_APU_TIMING_H
++#include <stdint.h>
++/* One 256-sample EP block at 48 kHz lasts exactly 16000/3 us.
++ * Store the deadline in thirds of a microsecond to avoid cumulative drift. */
++#define APU_EP_DEADLINE_STEP 16000
++static inline void apu_deadline_prepare(int64_t *deadline, int64_t now_us)
++{
++    int64_t now = now_us * 3;
++    if (*deadline == 0 || now - *deadline > APU_EP_DEADLINE_STEP)
++        *deadline = now;
++}
++static inline int64_t apu_deadline_remaining_ms(int64_t deadline, int64_t now_us)
++{
++    return (deadline - now_us * 3) / 3000;
++}
++static inline void apu_deadline_advance(int64_t *deadline)
++{
++    *deadline += APU_EP_DEADLINE_STEP;
++}
++#endif

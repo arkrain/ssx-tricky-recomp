@@ -1,0 +1,19 @@
+{
+  "revision": "f9b14039e5bb56ae2d8f028e31e7cc19f13f7e12",
+  "source_hashes": {
+    "debug.h": "1773c7f3b3db5318886ce48b01e42e00c94b80a8364089dc6276d6c7ed26eeef",
+    "trace.h": "c4e97d9ea31a30015eb19eeedce0498f802fe3d099b295679e7a213245b45ff2",
+    "interp/dsp_cpu.c": "b2879f6895ac5b4702a3a77dbd94fc5e4517928f5ef449030d44557860833e5b",
+    "interp/dsp_cpu.h": "314ab9afc8a01f9ceeafd6d0cb9a3e2446b0aa7e1bede758c5d7ad2b141163cf",
+    "interp/dsp_cpu_regs.h": "5373cbe8cb5326f39cbebfbbb13a85d78b4f8d47d7ebd3e4f2291e2fcde2c926",
+    "interp/dsp_dis.c.inc": "2a624a326c7633ff8a866bea4b379ac23aef3c3768a0873bf7d85a6b3e35911d",
+    "interp/dsp_emu.c.inc": "ffc744df58e3fea9df1fd2acffe267cb4126b5ecb6c82518009bcea17fbb6e5f",
+    "dsp.c": "bd40122dbca27b1ac8975f13786d071bed3a2380cb43bb368088a173d9794b60",
+    "dsp.h": "9310695dc57f630445101d49525139f62b090fe0f7988232f98458d484f6fd84",
+    "dsp_c.c": "89ed49bf56f66e8b59ae170911ecc9a6989f82bda793abec7c36d643cdef3516",
+    "dsp_internal.h": "f63862aa87c2af6fea9d6f1cb184e7768e0d61d56e505f5b56bbd0f471c418c3",
+    "dsp_dma.c": "4a19ab8e1d53a8e58d2301f777d509fc5dbf19daa04deb194b25465ec97a9369",
+    "dsp_dma.h": "117a7db6ae3b7bc7f8bf47f9dad30610dd72b0affba7ab28cdb721be3e4c6ffd",
+    "dsp_dma_regs.h": "9582796ee42313de2f341356761bdef514b8a9f9962199df8881a7461b78ea62"
+  }
+}

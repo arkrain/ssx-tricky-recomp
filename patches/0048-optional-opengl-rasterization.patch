@@ -1,0 +1,142 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -25,6 +25,7 @@
+  * <prefix>NNN.bmp, so the result can be looked at without a display.
+  */
+ #include "nv2a_vertex.h"
++#include "nv2a_gl.h"
+ #include "nv2a_combiner.h"
+ #include <math.h>
+ #include <stdio.h>
+@@ -279,6 +280,10 @@
+ static int s_triangle_colors;
+ static float s_triangle_tex[3][4][4];
+ static Texture s_extra_texture[4];
++static SsxGlVertex *s_gl_vertices;
++static unsigned s_gl_count,s_gl_capacity;
++static int s_gl_collect,s_gl_shader,s_gl_textured;
++
+ static uint32_t s_tex_reg[(NV_TEX_LAST - NV_TEX_FIRST) / 4 + 1];
+ static uint8_t  s_tex_set[(NV_TEX_LAST - NV_TEX_FIRST) / 4 + 1];
+ 
+@@ -455,6 +460,7 @@
+ static void dump_surface_bmp(void)
+ {
+     const char *prefix = getenv("RECOMP_FB_DUMP");
++    if (prefix) ssx_gl_sync();
+     const uint8_t *mem = (const uint8_t *)xbox_GetMemoryOffset();
+     uint32_t bpp = surface_bpp();
+     static int seq;
+@@ -538,6 +544,8 @@
+     }
+     if (param & NV097_CLEAR_COLOR_MASK) s_skip_frame=(s_render_frame++ % s_render_every)!=0;
+     if (s_skip_frame) return;
++    ssx_gl_sync();
++    ssx_gl_invalidate();
+     uint8_t *mem = (uint8_t *)xbox_GetMemoryOffset();
+     uint32_t bpp = surface_bpp();
+     uint32_t y, x;
+@@ -1039,6 +1047,40 @@
+     put_pixel(mem, bpp, x, y, argb);
+ }
+ 
++static int gl_sample_texture(const void *opaque,int x,int y,uint32_t *color) {
++    return sample_texture_for((const Texture *)opaque,x,y,color);
++}
++static void gl_finish_batch(void) {
++    if (!s_gl_collect || !s_gl_count) { s_gl_collect=0;return; }
++    uint8_t *mem=(uint8_t *)xbox_GetMemoryOffset();
++    SsxGlDraw d={0};
++    d.color=mem+dma_resolve(s_gpu.color_offset);d.pitch=s_gpu.pitch;
++    d.width=s_gpu.pitch/4;d.height=s_gpu.clip_y+s_gpu.clip_h;
++    d.clip_x=s_gpu.clip_x;d.clip_y=s_gpu.clip_y;d.clip_w=s_gpu.clip_w;d.clip_h=s_gpu.clip_h;
++    if(s_gpu.depth_offset && s_gpu.depth_pitch) d.depth=mem+dma_resolve(s_gpu.depth_offset);
++    d.depth_pitch=s_gpu.depth_pitch;d.color_mask=s_color_write_mask;
++    d.depth_enable=s_gpu.depth_enable;d.depth_write=s_gpu.depth_write;d.depth_func=s_gpu.depth_func;
++    d.alpha_enable=s_gpu.alpha_enable;d.alpha_func=s_gpu.alpha_func;d.alpha_ref=s_gpu.alpha_ref;
++    d.blend_enable=s_gpu.blend_enable;d.blend_src=s_gpu.blend_src;d.blend_dst=s_gpu.blend_dst;d.blend_equation=s_gpu.blend_equation;
++    d.registers=s_render_reg;
++    for(int i=0;i<4;i++) {
++        const Texture *t=&s_extra_texture[i];SsxGlTexture *g=&d.textures[i];
++        g->source=mem+t->offset;g->width=t->width;g->height=t->height;g->pitch=t->pitch;g->format=t->color;
++        g->wrap_u=t->addr_u;g->wrap_v=t->addr_v;g->valid=t->valid;
++        g->normalized=s_gl_shader && tex_size_from_format(t->color);
++        g->opaque=t;g->sample=gl_sample_texture;
++        g->min_filter=(s_tex_reg[i*16+5]>>16)&255;g->mag_filter=(s_tex_reg[i*16+5]>>24)&15;
++        unsigned block=d3d8_format_dxt_block_bytes(t->color);
++        unsigned f=linear_twin(t->color);
++        unsigned bytes=(f==0x13 || f==0x1f)?1:(f==0x10 || f==0x1c || f==0x11 || f==0x1d)?2:4;
++        g->source_size=block?((size_t)(t->width+3)/4)*((t->height+3)/4)*block:
++            (d3d8_format_is_swizzled(t->color)?(size_t)t->width*t->height*bytes:(size_t)t->pitch*t->height);
++        if(!(s_render_reg[0x1e60/4]&15) && i==0 && !s_gl_textured)g->valid=0;
++    }
++    if(!ssx_gl_draw(&d,s_gl_vertices,s_gl_count)) {fprintf(stderr,"[GL] batch failed\n");abort();}
++    s_gl_collect=0;s_gl_count=0;
++}
++
+ /* Half-space fill. Barycentric edge functions rather than scanline slopes:
+  * the same test decides both windings, so a title that emits clockwise
+  * triangles does not silently render nothing. */
+@@ -1074,6 +1116,27 @@
+     if (!surface_begin_batch(mem))
+         return;
+ 
++    if(s_gl_collect) {
++        if(s_gl_count+3>s_gl_capacity) {
++            unsigned capacity=s_gl_capacity?s_gl_capacity*2:3072;
++            SsxGlVertex *v=realloc(s_gl_vertices,(size_t)capacity*sizeof(*v));
++            if(!v)abort();
++            s_gl_vertices=v;s_gl_capacity=capacity;
++        }
++        const float *p[3]={a,b,c};
++        for(int j=0;j<3;j++) {
++            SsxGlVertex *v=&s_gl_vertices[s_gl_count++];memset(v,0,sizeof(*v));
++            memcpy(v->position,p[j],16);if(v->position[3]==0)v->position[3]=1;
++            rc_unpack(argb,v->diffuse);v->specular[3]=1;
++            for(int st=0;st<4;st++)v->tex[st][3]=1;
++            if(s_triangle_colors) {memcpy(v->diffuse,s_triangle_color[j][0],16);memcpy(v->specular,s_triangle_color[j][1],16);memcpy(v->tex,s_triangle_tex[j],64);}
++            else if(uv) {v->tex[0][0]=uv[j][0];v->tex[0][1]=uv[j][1];}
++        }
++        s_gl_shader=s_triangle_colors;s_gl_textured=textured;
++        s_gpu.tris_drawn++;s_gpu.drawn_offset=s_gpu.color_offset;
++        return;
++    }
++
+     minx = (int)floorf(fminf(a[0], fminf(b[0], c[0])));
+     maxx = (int)ceilf (fmaxf(a[0], fmaxf(b[0], c[0])));
+     miny = (int)floorf(fminf(a[1], fminf(b[1], c[1])));
+@@ -1459,6 +1522,10 @@
+         return;
+     }
+ 
++    s_gl_count=0;
++    s_gl_collect=surface_bpp()==4 && ssx_gl_enabled();
++    if(!s_gl_collect) {ssx_gl_sync();ssx_gl_invalidate();}
++
+     /* Count why, once per batch: the texture stage cannot change inside one. */
+     {
+         const VertexAttr *tc = texcoord_attr();
+@@ -1507,6 +1574,7 @@
+         break;                             /* points and lines: not yet */
+     }
+ 
++    gl_finish_batch();
+     if (s_gpu.tris_drawn && (s_gpu.tris_drawn % 500) == 0)
+         fprintf(stderr, "  [GPU] %u triangles rasterised\n", s_gpu.tris_drawn);
+ 
+@@ -1928,6 +1996,7 @@
+         semaphore_offset = param;
+         break;
+     case 0x1D70: { /* NV097_BACK_END_WRITE_SEMAPHORE_RELEASE */
++        ssx_gl_sync();
+         uintptr_t base = (uintptr_t)xbox_GetMemoryOffset();
+         uint32_t ramht = *(volatile uint32_t *)(base + 0xFD002210u);
+         if (!nv2a_semaphore_write((const uint8_t *)(base + 0xFD700000u),
+@@ -2042,6 +2111,7 @@
+         return;
+ 
+     case NV097_FLIP_STALL:
++        ssx_gl_sync();
+         /* The stall ends when the buffer being read is the one just finished.
+          * There is no scanout here to wait for, so that is now. */
+         s_gpu.flip_read = s_gpu.flip_write;

@@ -1,0 +1,86 @@
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -1319,6 +1319,30 @@
+ static void ke_shadow_insert(uint32_t guest_va, HANDLE host);
+ static HANDLE bridge_resolve_handle(uint32_t token);
+ 
++/* XDK libraries may initialize dispatcher events inline, without calling
++ * KeInitializeEvent. Guest event addresses are not host HANDLE pointers. */
++static int ke_inline_event(uint32_t va)
++{
++    return va >= 0x1000 && va <= g_xbox_total_ram - 16 && !(va & 3) &&
++           BRIDGE_MEM8(va) <= 1 && BRIDGE_MEM8(va + 2) == 4;
++}
++
++static HANDLE ke_resolve_object(uint32_t va)
++{
++    HANDLE h = ke_shadow_lookup(va);
++    if (h) return h;
++    if ((va & 0xff000000u) == 0x48000000u)
++        return bridge_resolve_handle(va);
++    if (!ke_inline_event(va)) return NULL;
++    /* Empty wait list proves this is an initialized guest event header. */
++    if (BRIDGE_MEM32(va + 8) != va + 8 || BRIDGE_MEM32(va + 12) != va + 8)
++        return NULL;
++    h = CreateEventW(NULL, BRIDGE_MEM8(va) == 0,
++                    BRIDGE_MEM32(va + 4) != 0, NULL);
++    if (h) ke_shadow_insert(va, h);
++    return h;
++}
++
+ /* ── KeSetEvent (ordinal 145) ────────────────────────────── */
+ static void bridge_KeSetEvent(void)
+ {
+@@ -1330,15 +1354,16 @@
+     (void)increment;
+     (void)wait;
+ 
+-    h = ke_shadow_lookup(guest_va);
+-    if (!h)
+-        h = bridge_resolve_handle(guest_va);
+-    if (!h)
+-        h = XBOX_TO_NATIVE(guest_va);
+-    if (h)
+-        g_eax = (uint32_t)SetEvent(h);
+-    else
++    h = ke_resolve_object(guest_va);
++    if (h) {
++        uint32_t previous = ke_inline_event(guest_va) ? BRIDGE_MEM32(guest_va + 4) : 0;
++        if (ke_inline_event(guest_va)) BRIDGE_MEM32(guest_va + 4) = 1;
++        SetEvent(h);
++        g_eax = previous;
++    } else {
++        fprintf(stderr, "[KERNEL] invalid KeSetEvent object 0x%08X\n", guest_va);
+         g_eax = 0;
++    }
+ }
+ 
+ /* ── KeWaitForSingleObject (ordinal 159) ─────────────────── */
+@@ -1351,15 +1376,21 @@
+     uint32_t timeout_ptr = STACK_ARG(4);
+     HANDLE h;
+ 
+-    h = ke_shadow_lookup(object);
+-    if (!h)
+-        h = bridge_resolve_handle(object);
+-    if (!h)
+-        h = XBOX_TO_NATIVE(object);
+-
++    h = ke_resolve_object(object);
++    if (!h) {
++        fprintf(stderr, "[KERNEL] invalid wait object 0x%08X\n", object);
++        g_eax = (uint32_t)STATUS_INVALID_HANDLE;
++        return;
++    }
++    if (ke_inline_event(object)) {
++        if (BRIDGE_MEM32(object + 4)) SetEvent(h);
++        else ResetEvent(h);
++    }
+     g_eax = (uint32_t)xbox_KeWaitForSingleObject(
+         h, wait_reason, wait_mode,
+         (BOOLEAN)alertable, XBOX_TO_NATIVE(timeout_ptr));
++    if (g_eax == 0 && ke_inline_event(object) && BRIDGE_MEM8(object) == 1)
++        BRIDGE_MEM32(object + 4) = 0;
+ }
+ 
+ /* ── NtWaitForSingleObject (ordinal 233) ─────────────────── */

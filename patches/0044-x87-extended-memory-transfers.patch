@@ -1,0 +1,139 @@
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -2934,6 +2934,8 @@
+                 if ops[0].type == "mem":
+                     if ops[0].mem_size == 4:
+                         return [f"fp_push(MEMF({_fmt_mem(ops[0])})); /* fld float */"]
++                    elif ops[0].mem_size == 10:
++                        return [f"fp_push(RECOMP_LOAD80({_fmt_mem(ops[0])})); /* fld extended */"]
+                     elif ops[0].mem_size == 8:
+                         return [f"fp_push(MEMD({_fmt_mem(ops[0])})); /* fld double */"]
+                     return [f"fp_push(MEMF({_fmt_mem(ops[0])})); /* fld */"]
+@@ -2963,6 +2965,8 @@
+                     return [f"MEMF({_fmt_mem(ops[0])}) = (float)fp_top();{do_pop} /* {m} */"]
+                 elif ops[0].mem_size == 8:
+                     return [f"MEMD({_fmt_mem(ops[0])}) = fp_top();{do_pop} /* {m} */"]
++                elif ops[0].mem_size == 10:
++                    return [f"RECOMP_STORE80({_fmt_mem(ops[0])}, fp_top());{do_pop} /* {m} extended */"]
+             # fst/fstp st(i): copy st0 to st(i); fstp then pops. This used to be
+             # a bare comment -- a no-op -- which LEAKS the FPU stack. `fstp st(0)`
+             # is the common idiom for "pop the value fptan/fsincos just pushed";
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -422,6 +422,47 @@
+ #define MEMF(addr)   (*(volatile float    *)XBOX_PTR(addr))
+ #define MEMD(addr)   (*(volatile double   *)XBOX_PTR(addr))
+ 
++/* x87 extended memory format has an explicit integer bit and 15-bit
++ * exponent. Never alias it to host long double (different on MSVC/ARM), or
++ * to float/double. The emulated register stack currently holds doubles. */
++static inline double RECOMP_LOAD80(uint32_t addr) {
++    uint64_t sig = (uint64_t)MEM32(addr) | ((uint64_t)MEM32(addr + 4) << 32);
++    uint16_t se = MEM16(addr + 8);
++    unsigned exponent = se & 0x7fff;
++    double value;
++    if (exponent == 0x7fff)
++        value = sig == UINT64_C(0x8000000000000000) ? INFINITY : NAN;
++    else if (exponent && !(sig >> 63))
++        value = NAN; /* unsupported unnormal encoding */
++    else
++        value = ldexp((double)sig, (int)(exponent ? exponent : 1) - 16383 - 63);
++    return copysign(value, (se & 0x8000) ? -1.0 : 1.0);
++}
++
++static inline void RECOMP_STORE80(uint32_t addr, double value) {
++    uint64_t bits;
++    memcpy(&bits, &value, sizeof(bits));
++    uint64_t sig = bits & UINT64_C(0x000fffffffffffff);
++    unsigned exponent = (unsigned)((bits >> 52) & 0x7ff);
++    uint16_t se = (uint16_t)((bits >> 48) & 0x8000);
++    if (exponent == 0x7ff) {
++        se |= 0x7fff;
++        sig = (sig << 11) | UINT64_C(0x8000000000000000);
++    } else if (exponent || sig) {
++        int exp = (int)exponent;
++        if (exponent) sig |= UINT64_C(0x0010000000000000);
++        else {
++            exp = 1;
++            while (!(sig & UINT64_C(0x0010000000000000))) { sig <<= 1; --exp; }
++        }
++        se |= (uint16_t)(exp + 16383 - 1023);
++        sig <<= 11;
++    }
++    MEM32(addr) = (uint32_t)sig;
++    MEM32(addr + 4) = (uint32_t)(sig >> 32);
++    MEM16(addr + 8) = se;
++}
++
+ /* ================================================================
+  * SSE / XMM register state
+  *
+--- a/tools/recomp/test_extended_float_execution.py
++++ b/tools/recomp/test_extended_float_execution.py
+@@ -0,0 +1,66 @@
++"""Exercise x87 extended memory transfers, including CRT spill/reload."""
++import pathlib
++import re
++import subprocess
++import tempfile
++import unittest
++from .disasm import Instruction, Operand
++from .lifter import Lifter
++
++class ExtendedFloatExecutionTest(unittest.TestCase):
++    def test_extended_memory_transfers(self):
++        header = (pathlib.Path(__file__).resolve().parents[2] / 'templates/runtime/recomp_types.h').read_text()
++        helpers = '\n'.join(re.search(r'static inline (?:double|void) '+name+r'\(.*?\n}', header, re.S).group() for name in ('RECOMP_LOAD80','RECOMP_STORE80'))
++        code = {}
++        for op in ('fld','fstp'):
++            ins = Instruction(0, 3, op, 'xword ptr [eax]', '')
++            ins.operands = [Operand(type='mem', mem_base='eax', mem_size=10)]
++            code[op] = '\n'.join(Lifter().lift_instruction(ins))
++        self.assertIn('RECOMP_LOAD80',code['fld'])
++        self.assertIn('RECOMP_STORE80',code['fstp'])
++        source = r'''
++#include <stdint.h>
++#include <string.h>
++#include <math.h>
++#include <assert.h>
++static unsigned char memory[32];
++#define MEM32(a) (*(uint32_t *)(memory+(a)))
++#define MEM16(a) (*(uint16_t *)(memory+(a)))
++''' + helpers + r'''
++static double values[8];
++static unsigned top;
++#define fp_top() values[top]
++#define fp_pop() (top=(top+1)&7)
++#define fp_push(v) do { double x=(v); top=(top+7)&7; values[top]=x; } while(0)
++static void store(void) { uint32_t eax=4;
++''' + code['fstp'] + r'''
++}
++static void load(void) { uint32_t eax=4;
++''' + code['fld'] + r'''
++}
++int main(void) {
++ const double cases[]={0.0,-0.0,1,-1,0.049941278994083405,3.141592653589793,
++    0x1p-1074,0x1p-1022,0x1.fffffffffffffp1023,INFINITY,-INFINITY,NAN};
++ for(unsigned j=0;j<8;j++) for(unsigned i=0;i<sizeof(cases)/sizeof(*cases);i++) {
++  double x=cases[i]; memset(memory,0xa5,sizeof(memory)); top=j; fp_top()=x;
++  store(); assert(top==((j+1)&7));
++  assert(memory[3]==0xa5 && memory[14]==0xa5);
++#if defined(__i386__) || defined(__x86_64__)
++  unsigned char expected[10];
++  __asm__ volatile("fldl %1; fstpt %0" : "=m"(expected) : "m"(x));
++  assert(memcmp(expected,memory+4,10)==0);
++#endif
++  load(); assert(top==j);
++  if(isnan(x)) assert(isnan(fp_top()));
++  else assert(memcmp(&x,&values[top],sizeof(x))==0);
++ }
++ MEM32(4)=0; MEM32(8)=0x80000000; MEM16(12)=0x3fff;
++ assert(RECOMP_LOAD80(4)==1);
++ MEM16(12)=0xc000; assert(RECOMP_LOAD80(4)==-2);
++ return 0;
++}
++'''
++        with tempfile.TemporaryDirectory() as folder:
++            path=pathlib.Path(folder); (path/'case.c').write_text(source)
++            subprocess.run(['cc','-fno-strict-aliasing',str(path/'case.c'),'-lm','-o',str(path/'case')],check=True)
++            subprocess.run([str(path/'case')],check=True)

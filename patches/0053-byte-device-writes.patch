@@ -1,0 +1,56 @@
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -404,6 +404,18 @@
+     if (addr >= 0xFE800000u && addr < 0xFE880000u && ssx_apu_read32(addr, &apu_value)) return apu_value;
+ #endif
+     return MEM32(addr);
++}
++
++/* Byte writes include AC97 bus-master control/reset registers. */
++#ifdef RECOMP_DIRECT_APU_MMIO
++extern int ssx_ac97_write8(uint32_t addr, uint8_t value);
++#endif
++static inline void RECOMP_STORE8(uint32_t addr, uint8_t value)
++{
++#ifdef RECOMP_DIRECT_APU_MMIO
++    if (addr >= 0xFEC00100u && addr < 0xFEC00180u && ssx_ac97_write8(addr, value)) return;
++#endif
++    MEM8(addr) = value;
+ }
+ 
+ /* PCRTC interrupt status is write-one-to-clear, not ordinary RAM. Keep
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -260,8 +260,8 @@
+     """Format writing to a memory operand."""
+     accessor = _mem_accessor(op.mem_size)
+     addr = _fmt_mem(op)
+-    if op.mem_size == 4:
+-        return f"RECOMP_STORE32({addr}, {value_expr});"
++    if op.mem_size in (1, 4):
++        return f"RECOMP_STORE{op.mem_size * 8}({addr}, {value_expr});"
+     return f"{accessor}({addr}) = {value_expr};"
+ 
+ 
+--- /dev/null
++++ b/tools/recomp/test_byte_device_write.py
+@@ -0,0 +1,9 @@
++import unittest
++from .disasm import Instruction, Operand
++from .lifter import Lifter
++
++class ByteDeviceWriteTest(unittest.TestCase):
++    def test_byte_store_uses_device_helper(self):
++        ins=Instruction(0,4,'mov','byte ptr [eax + 0xb], 2','')
++        ins.operands=[Operand(type='mem',mem_base='eax',mem_disp=11,mem_size=1),Operand(type='imm',imm=2)]
++        self.assertIn('RECOMP_STORE8(eax + 0xB, 2);',Lifter().lift_instruction(ins))
+--- a/tools/recomp/test_lifter_sar_width.py
++++ b/tools/recomp/test_lifter_sar_width.py
+@@ -65,6 +65,7 @@
+ static uint8_t g_ram[64];
+ #define MEM8(a)  (*(volatile uint8_t *)(g_ram + (a)))
+ #define MEM16(a) (*(volatile uint16_t *)(g_ram + (a)))
++static inline void RECOMP_STORE8(uint32_t a, uint8_t value) { MEM8(a) = value; }
+ """
+ 
+ # One sweep. VALUES is the value loop, STMT the lifted statement, GOT how the

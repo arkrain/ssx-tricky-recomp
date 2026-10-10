@@ -1,0 +1,37 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1086,8 +1086,21 @@
+     return isfinite(z) && comparison(s_gpu.depth_func,z,depth>>8);
+ }
+ 
++/* Window rectangles have inclusive 12-bit endpoints. Inverted rectangles
++ * are empty; zero registers describe the single pixel at the origin. */
++static int window_contains(int x,int y) {
++    int inside=0;
++    for(unsigned i=0;i<8;i++) {
++        uint32_t h=s_render_reg[0x2c0/4+i],v=s_render_reg[0x2e0/4+i];
++        if(x>=(int)(h&0xfff) && x<=(int)((h>>16)&0xfff) &&
++           y>=(int)(v&0xfff) && y<=(int)((v>>16)&0xfff)){inside=1;break;}
++    }
++    return inside != (int)(s_render_reg[0x2b4/4]&1);
++}
++
+ static void fragment(uint8_t *mem, uint32_t bpp, int x, int y, float z, uint32_t argb)
+ {
++    if (!window_contains(x,y)) return;
+     if (s_gpu.alpha_enable && !comparison(s_gpu.alpha_func, argb >> 24, s_gpu.alpha_ref & 255)) return;
+     if (s_gpu.depth_enable && s_gpu.depth_offset && s_gpu.depth_pitch) {
+         uint32_t base = dma_resolve(s_gpu.depth_offset);
+@@ -2233,6 +2246,12 @@
+ void nv2a_pb_exec_method(uint32_t subch, uint32_t method, uint32_t param)
+ {
+     if (method < 0x2000 && !(method & 3)) s_render_reg[method/4] = param;
++    /* A window-method write fills its slot and every following slot. Keep
++     * effective register state so CPU and GL consume the same rectangles. */
++    if (!(method&3) && method>=0x2c0 && method<0x300) {
++        uint32_t end=method<0x2e0?0x2e0:0x300;
++        for(uint32_t m=method+4;m<end;m+=4)s_render_reg[m/4]=param;
++    }
+     static int inited;
+     static uint32_t semaphore_dma, semaphore_offset;
+     if (!inited) {

@@ -1,0 +1,1006 @@
+[
+  {
+    "start": "0x001805B2",
+    "reason": "Observed callback from 0x0017FF2C during peripheral initialization; instruction boundary verified in XPP.asm"
+  },
+  {
+    "start": "0x00166FB0",
+    "reason": "D3D render-state callback table at 0x001732A0, state 116; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167540",
+    "reason": "D3D render-state callback table at 0x001732A4, state 117; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167120",
+    "reason": "D3D render-state callback table at 0x001732A8, state 118; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167450",
+    "reason": "D3D render-state callback table at 0x001732AC, state 119; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167490",
+    "reason": "D3D render-state callback table at 0x001732B0, state 120; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x001674E0",
+    "reason": "D3D render-state callback table at 0x001732B4, state 121; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167220",
+    "reason": "D3D render-state callback table at 0x001732B8, state 122; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167C90",
+    "reason": "D3D render-state callback table at 0x001732BC, state 123; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167D00",
+    "reason": "D3D render-state callback table at 0x001732C0, state 124; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167D80",
+    "reason": "D3D render-state callback table at 0x001732C4, state 125; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x001671E0",
+    "reason": "D3D render-state callback table at 0x001732C8, state 126; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167170",
+    "reason": "D3D render-state callback table at 0x001732CC, state 127; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167250",
+    "reason": "D3D render-state callback table at 0x001732D0, state 128; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167380",
+    "reason": "D3D render-state callback table at 0x001732D4, state 129; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167400",
+    "reason": "D3D render-state callback table at 0x001732D8, state 130; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x001670C0",
+    "reason": "D3D render-state callback table at 0x001732DC, state 131; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167F40",
+    "reason": "D3D render-state callback table at 0x001732E0, state 132; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167F90",
+    "reason": "D3D render-state callback table at 0x001732E4, state 133; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00166F80",
+    "reason": "D3D render-state callback table at 0x001732E8, state 134; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x001670F0",
+    "reason": "D3D render-state callback table at 0x001732EC, state 135; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x001672A0",
+    "reason": "D3D render-state callback table at 0x001732F0, state 136; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167300",
+    "reason": "D3D render-state callback table at 0x001732F4, state 137; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167DF0",
+    "reason": "D3D render-state callback table at 0x001732F8, state 138; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167E20",
+    "reason": "D3D render-state callback table at 0x001732FC, state 139; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167E80",
+    "reason": "D3D render-state callback table at 0x00173300, state 140; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167EE0",
+    "reason": "D3D render-state callback table at 0x00173304, state 141; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167F00",
+    "reason": "D3D render-state callback table at 0x00173308, state 142; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00167F20",
+    "reason": "D3D render-state callback table at 0x0017330C, state 143; dispatch verified in 0x00167030."
+  },
+  {
+    "start": "0x00104880",
+    "reason": "Observed virtual call from 0x000A9FEF (return 0x000A9FFC) after D3D initialization; original .text bytes confirm entry after alignment padding."
+  },
+  {
+    "start": "0x00103F30",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B38 (+0x0); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F96C0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B40 (+0x8); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F98E0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B44 (+0xC); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9A90",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B48 (+0x10); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9960",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B4C (+0x14); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9B00",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B50 (+0x18); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9AC0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B54 (+0x1C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9B10",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B58 (+0x20); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9B30",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B5C (+0x24); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9B40",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B60 (+0x28); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9B60",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B64 (+0x2C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9B80",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B68 (+0x30); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FE4F0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B6C (+0x34); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FE6E0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B70 (+0x38); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000B09F0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B74 (+0x3C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00105CE0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B78 (+0x40); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FE710",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B7C (+0x44); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FE740",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B80 (+0x48); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9C70",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B84 (+0x4C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9C20",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B88 (+0x50); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FE770",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B8C (+0x54); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FE940",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B90 (+0x58); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000A9110",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B94 (+0x5C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9D90",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B98 (+0x60); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9DF0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2B9C (+0x64); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9E20",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BA0 (+0x68); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9E50",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BA4 (+0x6C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FEAD0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BA8 (+0x70); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FEC80",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BAC (+0x74); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FEB00",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BB0 (+0x78); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9E90",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BB4 (+0x7C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FECD0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BB8 (+0x80); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FED00",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BBC (+0x84); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FED50",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BC0 (+0x88); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FED80",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BC4 (+0x8C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103D40",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BC8 (+0x90); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9EA0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BCC (+0x94); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103D60",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BD0 (+0x98); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9F10",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BD4 (+0x9C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9F20",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BD8 (+0xA0); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA140",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BDC (+0xA4); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA2A0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BE0 (+0xA8); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA1D0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BE4 (+0xAC); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA690",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BE8 (+0xB0); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA570",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BEC (+0xB4); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F95B0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BF0 (+0xB8); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000C9F70",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BF4 (+0xBC); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000C3790",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2BF8 (+0xC0); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA6B0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C00 (+0xC8); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA6D0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C04 (+0xCC); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA6F0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C08 (+0xD0); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA720",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C0C (+0xD4); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA730",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C10 (+0xD8); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA760",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C14 (+0xDC); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA890",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C18 (+0xE0); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA8B0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C1C (+0xE4); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA910",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C20 (+0xE8); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA930",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C24 (+0xEC); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA940",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C28 (+0xF0); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA960",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C2C (+0xF4); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FA9B0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C30 (+0xF8); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FAA40",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C34 (+0xFC); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103D70",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C3C (+0x104); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103D80",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C40 (+0x108); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FB080",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C44 (+0x10C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103F90",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C48 (+0x110); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103FB0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C4C (+0x114); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103D90",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C50 (+0x118); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00104020",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C54 (+0x11C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103DC0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C58 (+0x120); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103E30",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C5C (+0x124); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103DF0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C60 (+0x128); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103E70",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C68 (+0x130); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103EF0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C6C (+0x134); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103EB0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C70 (+0x138); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F7800",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C74 (+0x13C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00104040",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C78 (+0x140); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00104050",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C7C (+0x144); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FEDD0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C80 (+0x148); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FB110",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C84 (+0x14C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FB160",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C88 (+0x150); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FB320",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C8C (+0x154); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FB250",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C90 (+0x158); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FB3E0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C94 (+0x15C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FD2E0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2C98 (+0x160); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00104060",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CA0 (+0x168); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FB3F0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CA4 (+0x16C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103DB0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CA8 (+0x170); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FB560",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CAC (+0x174); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000B5C10",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CB0 (+0x178); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FF260",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CB4 (+0x17C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F8910",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CB8 (+0x180); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000B6010",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CC8 (+0x190); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FE640",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CCC (+0x194); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9690",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CD0 (+0x198); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00104760",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CD4 (+0x19C); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FDF30",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CD8 (+0x1A0); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x001033D0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CDC (+0x1A4); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000B6140",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CE0 (+0x1A8); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FB860",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CF0 (+0x1B8); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F98F0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CF4 (+0x1BC); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103D00",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CF8 (+0x1C0); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x00103D20",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2CFC (+0x1C4); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9DC0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2D00 (+0x1C8); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9E00",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2D04 (+0x1CC); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9E10",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2D08 (+0x1D0); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000F9610",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2D0C (+0x1D4); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FAAE0",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2D10 (+0x1D8); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000FAA70",
+    "reason": "cXBoxGraphicsMan vtable slot 0x001A2D14 (+0x1DC); constructor 0x00103C00 installs table; measured virtual calls at +4 and +0xDC."
+  },
+  {
+    "start": "0x000B2430",
+    "reason": "Measured scheduled callback from 0x0014B5B1; address registered by push at 0x000B25F0; entry after alignment padding."
+  },
+  {
+    "start": "0x0007C970",
+    "reason": "Code pointer at vtable 0x196700 +0x270; table installed by original MOV [object], table at 0xa3e72. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00084E80",
+    "reason": "Code pointer at vtable 0x197ac0 +0xA0; table installed by original MOV [object], table at 0x84cf3. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00096520",
+    "reason": "Code pointer at vtable 0x198c40 +0x4; table installed by original MOV [object], table at 0x94dca. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00095DA0",
+    "reason": "Code pointer at vtable 0x198bd0 +0x44; table installed by original MOV [object], table at 0x94dd0. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000A9350",
+    "reason": "Code pointer at vtable 0x19a118 +0x28; table installed by original MOV [object], table at 0xa96a8. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x0002E040",
+    "reason": "Code pointer at vtable 0x19a548 +0x38; table installed by original MOV [object], table at 0xac85d. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000B6C40",
+    "reason": "Code pointer at vtable 0x19b91c +0xC; table installed by original MOV [object], table at 0xb6b4b. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000B6D60",
+    "reason": "Code pointer at vtable 0x19b91c +0x10; table installed by original MOV [object], table at 0xb6b4b. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000C9BB0",
+    "reason": "Code pointer at vtable 0x19bdf0 +0x30; table installed by original MOV [object], table at 0xc7f36. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000C9D70",
+    "reason": "Code pointer at vtable 0x19bdf0 +0x34; table installed by original MOV [object], table at 0xc7f36. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000D97C0",
+    "reason": "Code pointer at vtable 0x19c100 +0xC4; table installed by original MOV [object], table at 0xe97b9. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000D9060",
+    "reason": "Code pointer at vtable 0x19c100 +0xD0; table installed by original MOV [object], table at 0xe97b9. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000D8BA0",
+    "reason": "Code pointer at vtable 0x19c100 +0xD4; table installed by original MOV [object], table at 0xe97b9. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000DCA50",
+    "reason": "Code pointer at vtable 0x19cb24 +0x8; table installed by original MOV [object], table at 0xdd7f1. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000CB230",
+    "reason": "Code pointer at vtable 0x19c588 +0x30; table installed by original MOV [object], table at 0xdd96d. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000D2C20",
+    "reason": "Code pointer at vtable 0x19c588 +0x78; table installed by original MOV [object], table at 0xdd96d. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000D2D80",
+    "reason": "Code pointer at vtable 0x19c588 +0x7C; table installed by original MOV [object], table at 0xdd96d. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000CB380",
+    "reason": "Code pointer at vtable 0x19c588 +0xC0; table installed by original MOV [object], table at 0xdd96d. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000E2450",
+    "reason": "Code pointer at vtable 0x19d1b8 +0x8; table installed by original MOV [object], table at 0xe23dd. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x000E80A0",
+    "reason": "Code pointer at vtable 0x19d43c +0x8; table installed by original MOV [object], table at 0xe85ee. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x001030B0",
+    "reason": "Code pointer at vtable 0x1a2af4 +0x8; table installed by original MOV [object], table at 0x102e58. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00102FE0",
+    "reason": "Code pointer at vtable 0x1a2af4 +0xC; table installed by original MOV [object], table at 0x102e58. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00129720",
+    "reason": "Code pointer at vtable 0x1a7328 +0x38; table installed by original MOV [object], table at 0x12a103. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x0012BEB0",
+    "reason": "Code pointer at vtable 0x1a7558 +0x10; table installed by original MOV [object], table at 0x12cda9. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x0012C210",
+    "reason": "Code pointer at vtable 0x1a7558 +0x14; table installed by original MOV [object], table at 0x12cda9. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00135A60",
+    "reason": "Code pointer at vtable 0x1a76d4 +0x18; table installed by original MOV [object], table at 0x13569f. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x0012FF10",
+    "reason": "Code pointer at vtable 0x1a777c +0x28; table installed by original MOV [object], table at 0x136403. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x001372F0",
+    "reason": "Code pointer at vtable 0x1a7964 +0x20; table installed by original MOV [object], table at 0x136d53. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00130EB0",
+    "reason": "Code pointer at vtable 0x1a7964 +0x28; table installed by original MOV [object], table at 0x136d53. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00131CB0",
+    "reason": "Code pointer at vtable 0x1a79a0 +0x28; table installed by original MOV [object], table at 0x137673. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00137E10",
+    "reason": "Code pointer at vtable 0x1a79a0 +0x4C; table installed by original MOV [object], table at 0x137673. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00132BC0",
+    "reason": "Code pointer at vtable 0x1a79a0 +0x54; table installed by original MOV [object], table at 0x137673. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x001382F0",
+    "reason": "Code pointer at vtable 0x1a79a0 +0x78; table installed by original MOV [object], table at 0x137673. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x001339B0",
+    "reason": "Code pointer at vtable 0x1a79a0 +0x80; table installed by original MOV [object], table at 0x137673. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00134320",
+    "reason": "Code pointer at vtable 0x1a79a0 +0xAC; table installed by original MOV [object], table at 0x137673. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00139000",
+    "reason": "Code pointer at vtable 0x1a79a0 +0xD0; table installed by original MOV [object], table at 0x137673. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00134B30",
+    "reason": "Code pointer at vtable 0x1a79a0 +0xD4; table installed by original MOV [object], table at 0x137673. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00134C30",
+    "reason": "Code pointer at vtable 0x1a79a0 +0xD8; table installed by original MOV [object], table at 0x137673. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00148E00",
+    "reason": "Code pointer at vtable 0x1a83e4 +0x1C; table installed by original MOV [object], table at 0x148847. Conservative seed; retain decoder boundary checks."
+  },
+  {
+    "start": "0x00119110",
+    "reason": "Measured worker-thread indirect target during asset loading, original function starts after RET and alignment padding."
+  },
+  {
+    "start": "0x00026D70",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0002B610",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0002D600",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0002FFF0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0003FF10",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000402D0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000492F0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0005A7F0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x00060530",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x00069A70",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x00069AA0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0007C580",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0007C5C0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0007C5F0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0007C620",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0007C640",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0007C660",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0007D5F0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0007D740",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000A70C0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000AB8F0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000AEEB0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000B0D40",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000B9A00",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000CB0A0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000CDF00",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000CDFD0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000CE370",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000CE500",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000CE950",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000D14F0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000D72F0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000DD3D0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000DFF70",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000E6670",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x000EC770",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0010DF80",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0010DF90",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0010E6F0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x001109E0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x00110A00",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x00110A40",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x001111B0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x001111F0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x00111250",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x00111280",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x00111570",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0011A800",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0011A840",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0011A880",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0011A8C0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0011A900",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0011A940",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x00120D80",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x00122530",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0012A5E0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0014CCF0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0014FFF0",
+    "reason": "Aligned direct-call/tail-call target emitted as an unresolved empty stub by the toolkit; recover original code with normal boundary checks."
+  },
+  {
+    "start": "0x0014CF40",
+    "reason": "Measured asset completion callback; registered by PUSH 0x0014CF40 at 0x0014D22D and 0x0014D33C before call 0x0014E130. Original entry follows RET and padding."
+  },
+  {
+    "start": "0x000E23C0",
+    "reason": "Measured worker callback; MOV ECX,[ESP+4] followed by tail JMP 0x000E13F0, after padding; callback address immediate at 0x000E241D."
+  },
+  {
+    "start": "0x00013150",
+    "reason": "Measured callback at 0x00014096, registered at 0x00013405 in callback table 0x00205A84."
+  },
+  {
+    "start": "0x00012C30",
+    "reason": "Companion callback assigned to 0x00205ABC at 0x0001341D alongside measured callback 0x00013150."
+  },
+  {
+    "start": "0x00019DF0",
+    "reason": "Callback stored by MOV at 0x00018EA9; verified callback field, executable entry and padding boundary in original XBE."
+  },
+  {
+    "start": "0x00019950",
+    "reason": "Callback stored by MOV at 0x00019BF6; verified callback field, executable entry and padding boundary in original XBE."
+  },
+  {
+    "start": "0x0001A390",
+    "reason": "Callback stored by MOV at 0x0001A495; verified callback field, executable entry and padding boundary in original XBE."
+  },
+  {
+    "start": "0x0001A620",
+    "reason": "Callback stored by MOV at 0x0001A7C5; verified callback field, executable entry and padding boundary in original XBE."
+  },
+  {
+    "start": "0x0001A990",
+    "reason": "Callback stored by MOV at 0x0001AC15; verified callback field, executable entry and padding boundary in original XBE."
+  },
+  {
+    "start": "0x0001B160",
+    "reason": "Callback stored by MOV at 0x0001B378; verified callback field, executable entry and padding boundary in original XBE."
+  },
+  {
+    "start": "0x0015AC50",
+    "reason": "Callback trio registered by 0x0015C262 through 0x00119800; 0x0015BA00 measured at indirect call 0x00119659. Original boundaries verified."
+  },
+  {
+    "start": "0x0015BD40",
+    "reason": "Callback trio registered by 0x0015C262 through 0x00119800; 0x0015BA00 measured at indirect call 0x00119659. Original boundaries verified."
+  },
+  {
+    "start": "0x0015BA00",
+    "reason": "Callback trio registered by 0x0015C262 through 0x00119800; 0x0015BA00 measured at indirect call 0x00119659. Original boundaries verified."
+  }
+]

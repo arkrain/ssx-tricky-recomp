@@ -1,0 +1,92 @@
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -380,7 +380,7 @@
+     "call",
+     "int3", "int", "wait",
+     "cld", "std", "cli", "sti",
+-    "pushfd", "popfd", "pushal",
++    "pushfd", "popfd", "pushal", "popal", "pushad", "popad",
+     "sgdt", "ljmp", "sfence",
+     # SSE scalar float
+     "movss", "movsd",
+@@ -1149,6 +1149,13 @@
+             return self._lift_xchg(insn, ops)
+ 
+         # ── Stack ──
++        if m in ("pushal", "pushad"):
++            return ["{ uint32_t _pushad_esp = esp;",
++                    "  PUSH32(esp, eax); PUSH32(esp, ecx); PUSH32(esp, edx); PUSH32(esp, ebx);",
++                    "  PUSH32(esp, _pushad_esp); PUSH32(esp, ebp); PUSH32(esp, esi); PUSH32(esp, edi); }"]
++        if m in ("popal", "popad"):
++            return ["POP32(esp, edi); POP32(esp, esi); POP32(esp, ebp); esp += 4;",
++                    "POP32(esp, ebx); POP32(esp, edx); POP32(esp, ecx); POP32(esp, eax);"]
+         if m == "push":
+             return self._lift_push(insn, ops)
+         if m == "pop":
+--- a/tools/recomp/translator.py
++++ b/tools/recomp/translator.py
+@@ -748,7 +748,8 @@
+         volatile_regs = {"eax", "ecx", "edx", "esp"}
+ 
+         # Ensure ebp tracked if function uses 'leave' (implicit ebp)
+-        if any(insn.mnemonic == "leave" for insn in instructions):
++        if any(insn.mnemonic in ("leave", "pushal", "popal", "pushad", "popad")
++               for insn in instructions):
+             used_regs.add("ebp")
+ 
+         # Guest control leaves the bottom of this function when its last
+--- /dev/null
++++ b/tools/recomp/test_pushad_execution.py
+@@ -0,0 +1,36 @@
++"""Execute the lifted register-save instructions, including the skipped ESP slot."""
++import pathlib
++import subprocess
++import tempfile
++import unittest
++from .test_lifter_sse import _insn
++from .lifter import Lifter
++
++class PushadExecutionTest(unittest.TestCase):
++    def test_stack_layout_and_restore(self):
++        for push, pop in [('pushal','popal'),('pushad','popad')]:
++            save='\n'.join(Lifter().lift_instruction(_insn(push,'',[])))
++            restore='\n'.join(Lifter().lift_instruction(_insn(pop,'',[])))
++            code='''#include <stdint.h>
++#include <assert.h>
++uint32_t stack[128];
++#define PUSH32(s,v) do { uint32_t value=(v); (s)-=4; stack[(s)/4]=value; } while(0)
++#define POP32(s,v) do { (v)=stack[(s)/4]; (s)+=4; } while(0)
++int main(void) {
++uint32_t eax=1,ecx=2,edx=3,ebx=4,esp=256,ebp=6,esi=7,edi=8;
++''' + save + '''
++assert(esp==224);
++uint32_t expected[8]={8,7,6,256,4,3,2,1};
++for(int i=0;i<8;i++)assert(stack[56+i]==expected[i]);
++stack[59]=0xdeadbeef; /* POPAD must ignore saved ESP. */
++eax=ecx=edx=ebx=ebp=esi=edi=99;
++''' + restore + '''
++assert(esp==256 && eax==1 && ecx==2 && edx==3 && ebx==4);
++assert(ebp==6 && esi==7 && edi==8);
++return 0;
++}
++'''
++            with self.subTest(push=push), tempfile.TemporaryDirectory() as folder:
++                p=pathlib.Path(folder);(p/'test.c').write_text(code)
++                subprocess.run(['cc',str(p/'test.c'),'-o',str(p/'test')],check=True)
++                subprocess.run([str(p/'test')],check=True)
+--- a/tools/recomp/test_translator_ebp_init.py
++++ b/tools/recomp/test_translator_ebp_init.py
+@@ -48,6 +48,13 @@
+                      "_addr": BASE, "size": len(image)}}
+         return FunctionTranslator(image, db).translate_function(BASE, db[BASE])
+ 
++    def test_pushad_popad_declares_implicit_ebp(self):
++        c = self._translate(bytes.fromhex("6061c3"))
++        self.assertIn("uint32_t ebp = 0;", c)
++        self.assertIn("PUSH32(esp, ebp)", c)
++        self.assertIn("POP32(esp, ebp)", c)
++        self.assertNotIn("TODO", c)
++
+     def test_frame_function_declares_ebp_initialised(self):
+         c = self._translate(PROLOGUE)
+         self.assertIn("uint32_t ebp = 0;", c)

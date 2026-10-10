@@ -1,0 +1,130 @@
+--- a/src/input/xinput_device.c
++++ b/src/input/xinput_device.c
+@@ -119,10 +119,49 @@
+ /* ======================================================================== */
+ 
+ #include <SDL.h>
++#include <stdlib.h>
+ 
+ static SDL_GameController *g_pads[XBOX_MAX_CONTROLLERS];
+ static BOOL  g_controller_connected[XBOX_MAX_CONTROLLERS];
+ static DWORD g_packet[XBOX_MAX_CONTROLLERS];
++
++/* The framebuffer event thread owns SDL events; USB reads an atomic snapshot. */
++static SDL_atomic_t keyboard_buttons;
++static uint32_t test_start_ms;
++static unsigned test_buttons=0x10;
++static uint32_t input_start_ticks;
++void xbox_InputKeyboardEvent(int scancode, int pressed)
++{
++    unsigned bit;
++    switch (scancode) {
++    case -1: SDL_AtomicSet(&keyboard_buttons,0); return;
++    case SDL_SCANCODE_UP: bit=XBOX_GAMEPAD_DPAD_UP; break;
++    case SDL_SCANCODE_DOWN: bit=XBOX_GAMEPAD_DPAD_DOWN; break;
++    case SDL_SCANCODE_LEFT: bit=XBOX_GAMEPAD_DPAD_LEFT; break;
++    case SDL_SCANCODE_RIGHT: bit=XBOX_GAMEPAD_DPAD_RIGHT; break;
++    case SDL_SCANCODE_RETURN: bit=XBOX_GAMEPAD_START; break;
++    case SDL_SCANCODE_BACKSPACE: bit=XBOX_GAMEPAD_BACK; break;
++    case SDL_SCANCODE_SPACE: bit=0x100; break;
++    case SDL_SCANCODE_ESCAPE: bit=0x200; break;
++    default: return;
++    }
++    int old, next;
++    do {
++        old=SDL_AtomicGet(&keyboard_buttons);
++        next=pressed ? old | bit : old & ~bit;
++    } while (!SDL_AtomicCAS(&keyboard_buttons,old,next));
++}
++static void keyboard_state(XBOX_INPUT_STATE *state)
++{
++    unsigned buttons=(unsigned)SDL_AtomicGet(&keyboard_buttons);
++    /* Explicit opt-in regression input goes through the same USB report path. */
++    uint32_t elapsed=SDL_GetTicks()-input_start_ticks;
++    if (test_start_ms && elapsed >= test_start_ms && elapsed-test_start_ms < 2000)
++        buttons |= test_buttons;
++    state->Gamepad.wButtons |= buttons & 0xff;
++    if (buttons & 0x100) state->Gamepad.bAnalogButtons[XBOX_BUTTON_A]=255;
++    if (buttons & 0x200) state->Gamepad.bAnalogButtons[XBOX_BUTTON_B]=255;
++}
+ 
+ /* Open up to XBOX_MAX_CONTROLLERS attached game controllers. */
+ static void open_controllers(void)
+@@ -143,6 +182,11 @@
+ {
+     if (!SDL_WasInit(SDL_INIT_GAMECONTROLLER))
+         SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
++    input_start_ticks=SDL_GetTicks();
++    const char *test=getenv("RECOMP_TEST_START_MS");
++    test_start_ms=test ? (uint32_t)strtoul(test,NULL,10) : 0;
++    const char *mask=getenv("RECOMP_TEST_BUTTONS");
++    test_buttons=mask ? (unsigned)strtoul(mask,NULL,0) : XBOX_GAMEPAD_START;
+     open_controllers();
+ }
+ 
+@@ -154,7 +198,11 @@
+     SDL_GameController *c = g_pads[dwPort];
+     if (!c || !SDL_GameControllerGetAttached(c)) {
+         g_controller_connected[dwPort] = FALSE;
+-        return ERROR_DEVICE_NOT_CONNECTED;
++        if (dwPort != 0) return ERROR_DEVICE_NOT_CONNECTED;
++        memset(pState,0,sizeof *pState);
++        pState->dwPacketNumber=++g_packet[dwPort];
++        keyboard_state(pState);
++        return ERROR_SUCCESS;
+     }
+ 
+     SDL_GameControllerUpdate();
+@@ -202,6 +250,7 @@
+     pState->Gamepad.sThumbRY =
+         (SHORT)(-1 - SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_RIGHTY));
+ 
++    if (dwPort == 0) keyboard_state(pState);
+     return ERROR_SUCCESS;
+ }
+ 
+--- a/src/input/xinput_xbox.h
++++ b/src/input/xinput_xbox.h
+@@ -109,6 +109,11 @@
+  */
+ DWORD xbox_InputGetCapabilities(DWORD dwPort, DWORD dwFlags, XBOX_INPUT_CAPABILITIES *pCaps);
+ 
++#if !defined(_WIN32)
++/* SDL scancode; -1 releases all keys on focus loss. */
++void xbox_InputKeyboardEvent(int scancode, int pressed);
++#endif
++
+ #ifdef __cplusplus
+ }
+ #endif
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -215,6 +215,7 @@
+ 
+ #else
+ #include <SDL.h>
++#include "../input/xinput_xbox.h"
+ #include <pthread.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+@@ -275,6 +276,10 @@
+         SDL_Event event;
+         while (SDL_PollEvent(&event)) {
+             if (event.type == SDL_QUIT) goto done;
++            if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP)
++                xbox_InputKeyboardEvent(event.key.keysym.scancode,event.type == SDL_KEYDOWN);
++            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
++                xbox_InputKeyboardEvent(-1,0);
+         }
+         pthread_mutex_lock(&fb_lock);
+         uint32_t address = fb_address, pitch = fb_stride;
+--- a/src/video/CMakeLists.txt
++++ b/src/video/CMakeLists.txt
+@@ -12,3 +12,7 @@
+ if(WIN32)
+     target_link_libraries(xbox_video PUBLIC mfplat mfreadwrite mfuuid mf ole32)
+ endif()
++
++if(NOT WIN32)
++    target_link_libraries(xbox_video PUBLIC xbox_input)
++endif()

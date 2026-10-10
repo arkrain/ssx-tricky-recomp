@@ -1,0 +1,18 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1589,6 +1589,15 @@
+                     if ((s_vertex_inputs & (1u<<a)) && !fetch_attr(&s_gpu.attr[a], indices[v], in[a]))
+                         memcpy(in[a], s_gpu.imm_attr[a], sizeof(in[a]));
+                 if (!ssx_vertex_execute(in, out)) return;
++                /* NV2A clamps color outputs before clipping/interpolation.
++                 * Saturating only the final fragment changes gradients when
++                 * lighting produces values above one. NaN colors become one.
++                 * Do this once per transformed vertex, retaining raw shader
++                 * execution semantics in ssx_vertex_execute itself. */
++                for(unsigned c=3;c<5;c++)for(unsigned k=0;k<4;k++) {
++                    float value=out[c][k];
++                    out[c][k]=value<0?0:value<1?value:1;
++                }
+                 s_vertex_cache[slot].index=indices[v];
+                 s_vertex_cache[slot].generation=s_vertex_generation;
+             }

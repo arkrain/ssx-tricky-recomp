@@ -1,0 +1,9 @@
+# Cached official Python image based on Debian 12, pinned by digest.
+FROM docker.io/library/python:3.13-slim-bookworm@sha256:00faa2debb87529f9f0764e9491d8ba400a3678976616c3bd7cb193745ac20d1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake ninja-build git pkg-config ca-certificates \
+    libsdl2-dev libepoxy-dev libegl1-mesa-dev libssl-dev \
+    libavformat-dev libavcodec-dev libswscale-dev libswresample-dev libavutil-dev \
+    && rm -rf /var/lib/apt/lists/*
+RUN python3 -m pip install --no-cache-dir capstone==5.0.7 pytest==8.4.2
+WORKDIR /workspace

@@ -1,0 +1,17 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1700,7 +1700,13 @@
+     }
+     for(unsigned i=0;i<s_shader_input_count;i++) {
+         unsigned a=s_shader_input_indices[i];
+-        fetch_vertex_input(a,index,s_shader_inputs[a]);
++        /* Varying float4 arrays need no default lanes or format conversion.
++         * Keep inline bounds checks and every other format on the decoder. */
++        const VertexAttr *attr=&s_gpu.attr[a];
++        if(!s_gpu.inline_active && attr->type==2 && attr->size==4 && attr->offset) {
++            const uint8_t *mem=(const uint8_t *)xbox_GetMemoryOffset();
++            memcpy(s_shader_inputs[a],mem+attr->offset+(size_t)index*attr->stride,16);
++        } else fetch_vertex_input(a,index,s_shader_inputs[a]);
+     }
+     return (const float (*)[4])s_shader_inputs;
+ }

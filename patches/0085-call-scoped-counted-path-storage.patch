@@ -1,0 +1,79 @@
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -2470,7 +2470,7 @@
+  */
+ 
+ /* Extract the ANSI path string from an Xbox OBJECT_ATTRIBUTES */
+-static const char* bridge_get_xbox_path(uint32_t obj_attrs_va)
++static const char* bridge_get_xbox_path(uint32_t obj_attrs_va, char path[65536])
+ {
+     uint32_t ansi_str_va, buf_va;
+     if (!obj_attrs_va) return NULL;
+@@ -2480,7 +2480,6 @@
+     if (!buf_va) return NULL;
+     /* XDK directory searches pass a counted prefix of "directory\\*".
+      * The byte after Length need not be NUL or part of the object name. */
+-    static RECOMP_TLS char path[65536];
+     uint16_t length=BRIDGE_MEM16(ansi_str_va);
+     if(length>BRIDGE_MEM16(ansi_str_va+2)) return NULL;
+     memcpy(path,XBOX_TO_NATIVE(buf_va),length);
+@@ -2583,9 +2582,9 @@
+ 
+ /* Build a native OBJECT_ATTRIBUTES wrapping the translated Xbox path. */
+ static void bridge_build_oa(uint32_t obj_attrs_va,
+-                            XBOX_OBJECT_ATTRIBUTES* oa, XBOX_ANSI_STRING* name)
++                            XBOX_OBJECT_ATTRIBUTES* oa, XBOX_ANSI_STRING* name, char buffer[65536])
+ {
+-    const char* path = bridge_get_xbox_path(obj_attrs_va);
++    const char* path = bridge_get_xbox_path(obj_attrs_va, buffer);
+     name->Buffer        = (PCHAR)path;
+     name->Length        = path ? (USHORT)strlen(path) : 0;
+     name->MaximumLength = (USHORT)(name->Length + 1);
+@@ -2608,7 +2607,10 @@
+     HANDLE   h  = NULL;
+     NTSTATUS st;
+ 
+-    bridge_build_oa(obj_attrs_va, &oa, &name);
++    /* Call-scoped scratch must not inflate every host thread's static TLS.
++     * SDL's queued-audio workers may have only a 64 KiB stack including TLS. */
++    char path_buffer[65536];
++    bridge_build_oa(obj_attrs_va, &oa, &name, path_buffer);
+     if (!name.Buffer) {
+         bridge_write_iostatus(iostatus_va, STATUS_OBJECT_PATH_NOT_FOUND, 0);
+         return STATUS_OBJECT_PATH_NOT_FOUND;
+@@ -3137,7 +3139,10 @@
+     XBOX_OBJECT_ATTRIBUTES oa;
+     XBOX_ANSI_STRING       name;
+ 
+-    bridge_build_oa(obj_attrs, &oa, &name);
++    /* Call-scoped scratch must not inflate every host thread's static TLS.
++     * SDL's queued-audio workers may have only a 64 KiB stack including TLS. */
++    char path_buffer[65536];
++    bridge_build_oa(obj_attrs, &oa, &name, path_buffer);
+     if (!name.Buffer) { g_eax = STATUS_OBJECT_PATH_NOT_FOUND; return; }
+     g_eax = (uint32_t)xbox_NtQueryFullAttributesFile(&oa,
+                 (PXBOX_FILE_NETWORK_OPEN_INFORMATION)XBOX_TO_NATIVE(info_va));
+@@ -3161,7 +3166,10 @@
+     XBOX_OBJECT_ATTRIBUTES oa;
+     XBOX_ANSI_STRING       name;
+ 
+-    bridge_build_oa(STACK_ARG(0), &oa, &name);
++    /* Call-scoped scratch must not inflate every host thread's static TLS.
++     * SDL's queued-audio workers may have only a 64 KiB stack including TLS. */
++    char path_buffer[65536];
++    bridge_build_oa(STACK_ARG(0), &oa, &name, path_buffer);
+     if (!name.Buffer) { g_eax = STATUS_OBJECT_PATH_NOT_FOUND; return; }
+     g_eax = (uint32_t)xbox_NtDeleteFile(&oa);
+ }
+@@ -3676,7 +3684,10 @@
+     HANDLE h = NULL;
+     NTSTATUS st;
+ 
+-    bridge_build_oa(STACK_ARG(1), &oa, &name);
++    /* Call-scoped scratch must not inflate every host thread's static TLS.
++     * SDL's queued-audio workers may have only a 64 KiB stack including TLS. */
++    char path_buffer[65536];
++    bridge_build_oa(STACK_ARG(1), &oa, &name, path_buffer);
+     st = xbox_NtCreateMutant(&h, STACK_ARG(1) ? &oa : NULL,
+                              (BOOLEAN)STACK_ARG(2));
+     if (st >= 0 && handle_va) bridge_write_handle(handle_va, h);

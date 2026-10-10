@@ -1,0 +1,72 @@
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -16,6 +16,11 @@
+  */
+ #include <stdint.h>
+ 
++/* Registered before guest workers start. The producer callback is invoked only
++ * on the thread publishing a completed surface; it may return NULL. */
++static const uint32_t *(*fb_hd_copy)(const void *,unsigned,unsigned *,unsigned *);
++void xbox_FramebufferHighResolutionSource(const uint32_t *(*copy)(const void *,unsigned,unsigned *,unsigned *)) { fb_hd_copy=copy; }
++
+ #if defined(_WIN32)
+ #include <windows.h>
+ #include <stdio.h>
+@@ -302,6 +307,8 @@
+ static int fb_started;
+ static uint32_t fb_completed[640 * 480], movie_pixels[640 * 480];
+ static int movie_active;
++static uint32_t fb_hd_pixels[2560*1920];
++static unsigned fb_hd_width,fb_hd_height;
+ /* Read-only diagnostics: these count SDL presentations and newly consumed
+  * framebuffer/movie handoffs, not monitor scanouts or guest flip commands. */
+ static uint64_t fb_source_generation, fb_clock_frequency;
+@@ -319,7 +326,14 @@
+ void xbox_FramebufferWindowSet(uint32_t address, uint32_t pitch)
+ {
+     const char *pin = getenv("RECOMP_FB_VA");
++    unsigned hd_width=0,hd_height=0;
++    const uint32_t *hd=NULL;
++    if(!pin && fb_hd_copy && pitch==2560)
++        hd=fb_hd_copy((const void *)(xbox_GetMemoryOffset()+(uintptr_t)address),pitch,&hd_width,&hd_height);
++    if(!hd || hd_width<640 || hd_width>2560 || hd_width%640 || hd_height!=hd_width/640*480)hd=NULL;
+     pthread_mutex_lock(&fb_lock);
++    fb_hd_width=hd?hd_width:0;fb_hd_height=hd?hd_height:0;
++    if(hd)memcpy(fb_hd_pixels,hd,(size_t)hd_width*hd_height*4);
+     fb_address = pin ? (uint32_t)strtoul(pin, NULL, 0) : address;
+     if (pitch) fb_stride = pitch;
+     uint64_t end = (uint64_t)fb_address + (uint64_t)fb_stride * 480;
+@@ -353,8 +367,10 @@
+     int quit_requested = 0;
+     int exit_status = EXIT_SUCCESS;
+     if (SDL_InitSubSystem(SDL_INIT_VIDEO)) goto fail;
++    const char *scale=getenv("SSX_GL_RENDER_SCALE");
++    unsigned window_scale=scale && scale[0]>='1' && scale[0]<='4' && !scale[1]?(unsigned)(scale[0]-'0'):1;
+     window = SDL_CreateWindow("SSX Tricky — native framebuffer", SDL_WINDOWPOS_CENTERED,
+-                              SDL_WINDOWPOS_CENTERED, 640, 480, SDL_WINDOW_RESIZABLE);
++                              SDL_WINDOWPOS_CENTERED,640*window_scale,480*window_scale,SDL_WINDOW_RESIZABLE);
+     if (!window) goto fail;
+     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+     if (!renderer) goto fail;
+@@ -396,9 +412,18 @@
+             pthread_mutex_lock(&fb_lock);
+             uint64_t generation=fb_source_generation;
+             observed_generation=generation;
+-            for (unsigned y = 0; y < 480; ++y)
+-                memcpy((uint8_t *)surface->pixels + y * surface->pitch,
+-                       (movie_active ? movie_pixels : fb_completed) + y * 640, 2560);
++            unsigned width=movie_active || !fb_hd_width?640:fb_hd_width;
++            unsigned height=movie_active || !fb_hd_height?480:fb_hd_height;
++            if((unsigned)surface->w!=width || (unsigned)surface->h!=height) {
++                SDL_FreeSurface(surface);SDL_DestroyTexture(texture);
++                surface=SDL_CreateRGBSurfaceWithFormat(0,width,height,32,SDL_PIXELFORMAT_ARGB8888);
++                texture=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,SDL_TEXTUREACCESS_STREAMING,width,height);
++                if(!surface || !texture){pthread_mutex_unlock(&fb_lock);goto fail;}
++                fprintf(stderr,"[FBWIN] completed image %ux%u\n",width,height);
++            }
++            const uint32_t *pixels=movie_active?movie_pixels:fb_hd_width?fb_hd_pixels:fb_completed;
++            for(unsigned y=0;y<height;y++)
++                memcpy((uint8_t *)surface->pixels+y*surface->pitch,pixels+y*width,width*4);
+             pthread_mutex_unlock(&fb_lock);
+             SDL_UpdateTexture(texture, NULL, surface->pixels, surface->pitch);
+             SDL_RenderClear(renderer);

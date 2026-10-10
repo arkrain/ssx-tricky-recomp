@@ -1,0 +1,61 @@
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -28,6 +28,7 @@
+ #include "kernel.h"
+ #include "xbox_memory_layout.h"
+ #include "recomp_icall_feedback.h"
++#include "vblank_clock.h"
+ #include <stdio.h>
+ /* stdlib.h is load-bearing, not tidiness. Without it C89 implicit declaration
+  * makes malloc return `int`, so bridge_spawn_thread truncated its heap pointer
+@@ -1993,17 +1994,14 @@
+ static void kernel_vblank_tick(void)
+ {
+     static int enabled = -1;
+-    static long long next_ms;
+-    long long now;
++    static XboxVblankClock clock;
+ 
+     if (enabled < 0)
+         enabled = getenv("RECOMP_VBLANK") != NULL;
+     if (!enabled)
+         return;
+ 
+-    now = (long long)GetTickCount64();
+-    int vblank = now >= next_ms;
+-    if (vblank) next_ms = now + 16;            /* ~60 Hz */
++    int vblank = xbox_vblank_due(&clock,(uint64_t)GetTickCount64());
+ 
+     if (!xbox_GetConnectedInterrupt(NV2A_VECTOR))
+         return;
+@@ -2306,7 +2304,9 @@
+         long long now;
+         int i;
+ 
+-        Sleep(10);
++        /* A 10 ms poll rounded the 16 ms refresh deadline to 20 ms and
++         * delayed GPU notification/DPC completion by up to a frame. */
++        Sleep(1);
+         kernel_vblank_tick();  /* the GPU's frame clock */
+         kernel_drain_dpcs();   /* deferred work, before due timers */
+         now = (long long)GetTickCount64();
+--- /dev/null
++++ b/src/kernel/vblank_clock.h
+@@ -0,0 +1,17 @@
++#ifndef XBOXRECOMP_VBLANK_CLOCK_H
++#define XBOXRECOMP_VBLANK_CLOCK_H
++#include <stdint.h>
++/* Integer phase accumulator for the advertised 60 Hz NTSC refresh. Retain
++ * fractional milliseconds instead of rounding each deadline relative to now.
++ * A delayed worker raises one interrupt and skips missed periods; it never
++ * floods the guest with a burst of old interrupts. */
++typedef struct { uint64_t next; int initialized; } XboxVblankClock;
++static inline int xbox_vblank_due(XboxVblankClock *clock,uint64_t now_ms)
++{
++    uint64_t phase=now_ms*60;
++    if(!clock->initialized){clock->initialized=1;clock->next=phase;}
++    if(phase<clock->next)return 0;
++    clock->next+=((phase-clock->next)/1000+1)*1000;
++    return 1;
++}
++#endif

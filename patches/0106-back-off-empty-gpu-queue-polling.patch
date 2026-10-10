@@ -1,0 +1,71 @@
+diff --git a/src/kernel/xbox_memory_layout.c b/src/kernel/xbox_memory_layout.c
+--- a/src/kernel/xbox_memory_layout.c
++++ b/src/kernel/xbox_memory_layout.c
+@@ -14,12 +14,14 @@
+ 
+ #include "xbox_memory_layout.h"
+ #include "kernel.h"
++#include "nv2a_idle.h"
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <setjmp.h>
+ #if !defined(_WIN32)
+ #include <unistd.h>   /* _exit */
++#include <time.h>
+ #endif
+ 
+ /* XBE header field offsets (per xboxdevwiki.net/Xbe) */
+@@ -575,7 +577,11 @@
+ static DWORD WINAPI nv2a_ack_thread(LPVOID param)
+ {
+     volatile uint32_t *regs = (volatile uint32_t *)param;
++    unsigned empty_polls=0;
++    const char *idle_option=getenv("RECOMP_NV2A_IDLE_BACKOFF");
++    int idle_enabled=!(idle_option && !strcmp(idle_option,"0"));
+     while (!InterlockedCompareExchange(&g_nv2a_ack_stop, 0, 0)) {
++        int backoff=0;
+         for (size_t i = 0; i < sizeof(NV2A_ACK) / sizeof(NV2A_ACK[0]); i++) {
+             volatile uint32_t *r =
+                 (volatile uint32_t *)((char *)regs + NV2A_ACK[i].offset);
+@@ -603,6 +609,7 @@
+             volatile uint32_t *get = (volatile uint32_t *)((char *)regs + NV2A_USER_DMA_GET);
+             volatile uint32_t *put_reg = (volatile uint32_t *)((char *)regs + NV2A_USER_DMA_PUT);
+             uint32_t put = *put_reg, before = *get;
++            backoff=nv2a_idle_backoff(&empty_polls,before,put);
+             static DWORD last_report, last_trace;
+             DWORD now_ms = GetTickCount();
+             if (before != put) {
+@@ -646,6 +653,16 @@
+         *(volatile uint32_t *)((uintptr_t)(XBOX_KERNEL_DATA_BASE + KDATA_TICK_COUNT)
+                                + g_memory_offset) = GetTickCount();
+ 
++#if !defined(_WIN32)
++        if(idle_enabled && backoff) {
++            /* Avoid consuming a core polling an empty queue. A producer may
++             * publish after this observation, so keep the requested delay
++             * short. Signals may interrupt it; the next iteration rechecks
++             * all registers, mirrors and the real GET/PUT cursors normally. */
++            const struct timespec delay={0,50000};
++            nanosleep(&delay,NULL);
++        } else
++#endif
+         Sleep(0);  /* yield; the waiter is spinning on another core */
+     }
+     return 0;
+diff --git a/src/kernel/nv2a_idle.h b/src/kernel/nv2a_idle.h
+new file mode 100644
+--- /dev/null
++++ b/src/kernel/nv2a_idle.h
+@@ -0,0 +1,11 @@
++#ifndef XBOX_NV2A_IDLE_H
++#define XBOX_NV2A_IDLE_H
++/* Back off only after sixteen consecutive observations of an empty queue.
++ * An outstanding or partially submitted packet resets the run immediately. */
++static inline int nv2a_idle_backoff(unsigned *empty_polls, unsigned get, unsigned put)
++{
++    if(get!=put) { *empty_polls=0;return 0; }
++    if(++*empty_polls<16)return 0;
++    *empty_polls=0;return 1;
++}
++#endif

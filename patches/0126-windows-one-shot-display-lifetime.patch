@@ -1,0 +1,23 @@
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -26,6 +26,9 @@
+ extern ptrdiff_t xbox_GetMemoryOffset(void);
+ 
+ static volatile LONG s_fb_running;
++/* Starting and stopping are separate states: a close must never let the
++ * pushbuffer worker create another display while the old one is exiting. */
++static volatile LONG s_fb_started;
+ static uint32_t      s_fb_va, s_fb_pitch, s_fb_width = 640, s_fb_height = 480;
+ static uint32_t     *s_rgb;           /* converted 32-bit copy for GDI */
+ static SRWLOCK s_movie_lock=SRWLOCK_INIT;
+@@ -266,8 +269,9 @@
+ 
+     if (!getenv("RECOMP_FB_WINDOW"))
+         return;
+-    if (InterlockedCompareExchange(&s_fb_running, 1, 0) != 0)
++    if (InterlockedCompareExchange(&s_fb_started, 1, 0) != 0)
+         return;
++    InterlockedExchange(&s_fb_running, 1);
+     th = CreateThread(NULL, 0, fb_thread, NULL, 0, NULL);
+     if (th)
+         CloseHandle(th);

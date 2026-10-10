@@ -1,0 +1,46 @@
+--- a/src/input/xinput_device.c
++++ b/src/input/xinput_device.c
+@@ -144,6 +144,18 @@
+     case SDL_SCANCODE_BACKSPACE: bit=XBOX_GAMEPAD_BACK; break;
+     case SDL_SCANCODE_SPACE: bit=0x100; break;
+     case SDL_SCANCODE_ESCAPE: bit=0x200; break;
++    case SDL_SCANCODE_LSHIFT: bit=0x400; break;
++    case SDL_SCANCODE_R: bit=0x800; break;
++    case SDL_SCANCODE_C: bit=0x1000; break;
++    case SDL_SCANCODE_V: bit=0x2000; break;
++    case SDL_SCANCODE_Q: bit=0x4000; break;
++    case SDL_SCANCODE_E: bit=0x8000; break;
++    case SDL_SCANCODE_LCTRL: bit=XBOX_GAMEPAD_LEFT_THUMB; break;
++    case SDL_SCANCODE_RCTRL: bit=XBOX_GAMEPAD_RIGHT_THUMB; break;
++    case SDL_SCANCODE_I: bit=0x100000; break;
++    case SDL_SCANCODE_K: bit=0x200000; break;
++    case SDL_SCANCODE_J: bit=0x400000; break;
++    case SDL_SCANCODE_L: bit=0x800000; break;
+     case SDL_SCANCODE_W: bit=0x10000; break;
+     case SDL_SCANCODE_S: bit=0x20000; break;
+     case SDL_SCANCODE_A: bit=0x40000; break;
+@@ -171,17 +183,21 @@
+         if (elapsed-last_read >= 16) {
+             last_read=elapsed; file_buttons=0;
+             FILE *f=fopen(test_input_file,"r");
+-            if(f) { unsigned mask; if(fscanf(f,"%x",&mask)==1)file_buttons=mask&0xf03ff; fclose(f); }
++            if(f) { unsigned mask; if(fscanf(f,"%x",&mask)==1)file_buttons=mask&0xffffff; fclose(f); }
+         }
+         buttons |= file_buttons;
+     }
+     state->Gamepad.wButtons |= buttons & 0xff;
+-    if (buttons & 0x100) state->Gamepad.bAnalogButtons[XBOX_BUTTON_A]=255;
+-    if (buttons & 0x200) state->Gamepad.bAnalogButtons[XBOX_BUTTON_B]=255;
++    for(unsigned i=0;i<8;i++)
++        if(buttons & (0x100u<<i)) state->Gamepad.bAnalogButtons[i]=255;
+     if(buttons & 0xc0000) state->Gamepad.sThumbLX=
+         ((buttons&0x80000)?32767:0)-((buttons&0x40000)?32767:0);
+     if(buttons & 0x30000) state->Gamepad.sThumbLY=
+         ((buttons&0x10000)?32767:0)-((buttons&0x20000)?32767:0);
++    if(buttons & 0xc00000) state->Gamepad.sThumbRX=
++        ((buttons&0x800000)?32767:0)-((buttons&0x400000)?32767:0);
++    if(buttons & 0x300000) state->Gamepad.sThumbRY=
++        ((buttons&0x100000)?32767:0)-((buttons&0x200000)?32767:0);
+ }
+ 
+ /* Open up to XBOX_MAX_CONTROLLERS attached game controllers. */

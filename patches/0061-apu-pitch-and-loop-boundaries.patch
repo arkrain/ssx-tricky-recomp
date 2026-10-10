@@ -1,0 +1,126 @@
+--- a/src/apu/apu_state.h
++++ b/src/apu/apu_state.h
+@@ -373,6 +373,9 @@
+     uint16_t voice;
+     float resample_buf[NUM_SAMPLES_PER_FRAME * 2];
+     SRC_STATE *resampler;
++    double resample_phase;
++    float resample_pair[2][2];
++    unsigned resample_valid;
+     sv_filter svf[2];
+     HrtfFilter hrtf;
+ } MCPXAPUVoiceFilter;
+--- a/src/apu/apu_vp.c
++++ b/src/apu/apu_vp.c
+@@ -71,6 +71,8 @@
+     assert(v < MCPX_HW_MAX_VOICES);
+     memset(&d->vp.filters[v].svf, 0, sizeof(d->vp.filters[v].svf));
+     hrtf_filter_clear_history(&d->vp.filters[v].hrtf);
++    d->vp.filters[v].resample_phase = 0;
++    d->vp.filters[v].resample_valid = 0;
+     if (d->vp.filters[v].resampler) {
+         src_reset(d->vp.filters[v].resampler);
+     }
+@@ -911,7 +913,7 @@
+         }
+     }
+ 
+-    if (cbo >= ebo) {
++    if (cbo > ebo) {
+         if (stream) {
+             d->vp.ssl[v].ssl_seg += 1;
+             cbo = 0;
+@@ -939,33 +941,45 @@
+     return sample_count;
+ }
+ 
+-/* ============================================================
+- * Voice resampling (simplified - no libsamplerate)
+- *
+- * Since libsamplerate is stubbed, we do a simple nearest-neighbor
+- * resample. This gives us functional audio at the cost of quality.
+- * ============================================================ */
++/* Stateful linear interpolation. Rate is output frames per source frame.
++ * Keep phase and the adjacent samples across the 32-frame VP boundaries. */
++static int voice_resample_next(MCPXAPUState *d, uint16_t v, float sample[2])
++{
++    if (!voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
++                        NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE)) return 0;
++    return voice_get_samples(d, v, (float (*)[2])sample, 1) == 1;
++}
+ 
+ static int voice_resample(MCPXAPUState *d, uint16_t v, float samples[][2],
+                           int requested_num, float rate)
+ {
+-    /* Without libsamplerate, just fetch raw samples at native rate.
+-     * Rate < 1.0 means we need more source samples than output samples.
+-     * For initial functionality, just get the samples directly. */
+-    int sample_count = 0;
+-    while (sample_count < requested_num) {
+-        int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
+-                                    NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
+-        if (!active) break;
+-
+-        int count = voice_get_samples(d, v, &samples[sample_count],
+-                                      requested_num - sample_count);
+-        if (count < 0) break;
+-        if (count == 0) return -1;
+-        sample_count += count;
+-    }
+-    (void)rate; /* Ignored until we add proper resampling */
+-    return sample_count;
++    MCPXAPUVoiceFilter *f = &d->vp.filters[v];
++    if (!isfinite(rate) || rate <= 0) return 0;
++    double step = 1.0 / rate;
++    for (int i = 0; i < requested_num; i++) {
++        if (!f->resample_valid) {
++            if (!voice_resample_next(d, v, f->resample_pair[0])) return i;
++            f->resample_valid = 1;
++        }
++        while (f->resample_phase >= 1.0) {
++            if (f->resample_valid == 2) {
++                memcpy(f->resample_pair[0], f->resample_pair[1], sizeof(f->resample_pair[0]));
++            } else if (!voice_resample_next(d, v, f->resample_pair[0])) {
++                return i;
++            }
++            f->resample_valid = 1;
++            f->resample_phase -= 1.0;
++        }
++        if (f->resample_phase > 0 && f->resample_valid == 1 &&
++            voice_resample_next(d, v, f->resample_pair[1])) f->resample_valid = 2;
++        for (int ch = 0; ch < 2; ch++) {
++            float a = f->resample_pair[0][ch];
++            float b = f->resample_valid == 2 ? f->resample_pair[1][ch] : a;
++            samples[i][ch] = a + (b-a) * (float)f->resample_phase;
++        }
++        f->resample_phase += step;
++    }
++    return requested_num;
+ }
+ 
+ /* ============================================================
+@@ -1038,20 +1052,10 @@
+             memset(&mixbins[mp_bin][0], 0, sizeof(mixbins[0]));
+         }
+     } else {
+-        for (int sample_count = 0; sample_count < NUM_SAMPLES_PER_FRAME;) {
+-            int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
+-                                        NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
+-            if (!active) return;
+-            int count = voice_resample(d, v, &samples[sample_count],
+-                                       NUM_SAMPLES_PER_FRAME - sample_count, rate);
+-            if (count < 0) break;
+-            sample_count += count;
+-        }
+-    }
+-
+-    int active = voice_get_mask(d, v, NV_PAVS_VOICE_PAR_STATE,
+-                                NV_PAVS_VOICE_PAR_STATE_ACTIVE_VOICE);
+-    if (!active) return;
++        /* A source may finish partway through this frame. Mix the samples
++         * already produced; the remaining zero-filled tail stays silent. */
++        if (!voice_resample(d, v, samples, NUM_SAMPLES_PER_FRAME, rate)) return;
++    }
+ 
+     /* Get volume bins */
+     int bin[8];

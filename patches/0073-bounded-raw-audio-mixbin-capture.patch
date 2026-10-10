@@ -1,0 +1,50 @@
+--- a/src/apu/apu_dsp.c
++++ b/src/apu/apu_dsp.c
+@@ -123,6 +123,39 @@
+     (void)d;
+ }
+ 
++/* Opt-in raw mixbin capture for diagnosing audio lost before stereo output.
++ * Format: 15,000 blocks of float32 [32 bins][32 samples], 48 kHz (10 seconds).
++ * A request file arms/rearms the capture; normal playback does no file I/O. */
++static void capture_mixbins(const float bins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
++{
++    static int initialized;
++    static const char *path,*trigger;
++    static FILE *dump;
++    static unsigned poll,blocks;
++    if(!initialized) {
++        initialized=1;path=getenv("RECOMP_APU_BINS_DUMP");
++        trigger=getenv("RECOMP_APU_BINS_TRIGGER");
++    }
++    if(!path || !*path || !trigger || !*trigger)return;
++    if(++poll>=150) {
++        poll=0;FILE *request=fopen(trigger,"rb");
++        if(request) {
++            fclose(request);
++            if(remove(trigger)==0) {
++                if(dump)fclose(dump);
++                dump=fopen(path,"wb");blocks=0;
++                if(!dump)perror("RECOMP_APU_BINS_DUMP");
++            }
++        }
++    }
++    if(!dump)return;
++    if(fwrite(bins,sizeof(float),NUM_MIXBINS*NUM_SAMPLES_PER_FRAME,dump)!=
++            NUM_MIXBINS*NUM_SAMPLES_PER_FRAME) {
++        perror("RECOMP_APU_BINS_DUMP write");fclose(dump);dump=NULL;return;
++    }
++    if(++blocks==15000) {fclose(dump);dump=NULL;}
++}
++
+ void mcpx_apu_dsp_frame(MCPXAPUState *d,
+                          float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+ {
+@@ -143,6 +176,7 @@
+     int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
+ 
+     dsp_ack_frame(d);
++    capture_mixbins(mixbins);
+ 
+     if (d->monitor.point != MCPX_APU_DEBUG_MON_VP) {
+         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {

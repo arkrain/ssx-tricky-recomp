@@ -1,0 +1,53 @@
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -225,6 +225,7 @@
+ static pthread_mutex_t fb_lock = PTHREAD_MUTEX_INITIALIZER;
+ static uint32_t fb_address, fb_stride;
+ static int fb_started;
++static uint32_t fb_completed[640 * 480];
+ 
+ void xbox_FramebufferWindowSet(uint32_t address, uint32_t pitch)
+ {
+@@ -232,6 +233,21 @@
+     pthread_mutex_lock(&fb_lock);
+     fb_address = pin ? (uint32_t)strtoul(pin, NULL, 0) : address;
+     if (pitch) fb_stride = pitch;
++    uint64_t end = (uint64_t)fb_address + (uint64_t)fb_stride * 480;
++    int valid = (fb_address >= 0x1000 && end <= 0x04000000u) ||
++                (fb_address >= 0x80000000u && end <= 0x84000000ull);
++    if (valid && (fb_stride == 2560 || fb_stride == 1280)) {
++        const uint8_t *src = (const uint8_t *)(xbox_GetMemoryOffset() + (uintptr_t)fb_address);
++        for (unsigned y = 0; y < 480; ++y) {
++            uint32_t *dst = fb_completed + y * 640;
++            if (fb_stride == 2560) memcpy(dst, src + y * fb_stride, 2560);
++            else for (unsigned x = 0; x < 640; ++x) {
++                uint16_t v; memcpy(&v, src + y * fb_stride + x * 2, 2);
++                dst[x] = 0xff000000u | (((v >> 11) * 255 / 31) << 16) |
++                         ((((v >> 5) & 63) * 255 / 63) << 8) | ((v & 31) * 255 / 31);
++            }
++        }
++    }
+     pthread_mutex_unlock(&fb_lock);
+ }
+ 
+@@ -267,16 +283,10 @@
+         int valid = (address >= 0x1000 && end <= 0x04000000u) ||
+                     (address >= 0x80000000u && end <= 0x84000000ull);
+         if (valid && (pitch == 640 * 4 || pitch == 640 * 2)) {
+-            const uint8_t *src = (const uint8_t *)(xbox_GetMemoryOffset() + (uintptr_t)address);
+-            for (unsigned y = 0; y < 480; ++y) {
+-                uint32_t *dst = (uint32_t *)((uint8_t *)surface->pixels + y * surface->pitch);
+-                if (pitch == 2560) memcpy(dst, src + y * pitch, 2560);
+-                else for (unsigned x = 0; x < 640; ++x) {
+-                    uint16_t v; memcpy(&v, src + y * pitch + x * 2, 2);
+-                    dst[x] = 0xff000000u | (((v >> 11) * 255 / 31) << 16) |
+-                             ((((v >> 5) & 63) * 255 / 63) << 8) | ((v & 31) * 255 / 31);
+-                }
+-            }
++            pthread_mutex_lock(&fb_lock);
++            for (unsigned y = 0; y < 480; ++y)
++                memcpy((uint8_t *)surface->pixels + y * surface->pitch, fb_completed + y * 640, 2560);
++            pthread_mutex_unlock(&fb_lock);
+             SDL_UpdateTexture(texture, NULL, surface->pixels, surface->pitch);
+             SDL_RenderClear(renderer);
+             SDL_RenderCopy(renderer, texture, NULL, NULL);

@@ -1,0 +1,71 @@
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -3354,6 +3354,17 @@
+                 i += 1
+                 continue
+ 
++        # A zero-count REP comparison leaves ZF unchanged. Seed the equality
++        # result from the preceding known flag setter before the loop can
++        # modify its operands (especially ESI/EDI/ECX).
++        string_compare = (curr.mnemonic.startswith("rep") and any(
++            name in (curr.mnemonic + " " + curr.op_str)
++            for name in ("cmpsb", "cmpsw", "cmpsd", "scasb", "scasw", "scasd")))
++        if string_compare and last_flag_setter:
++            prior_zero = _make_condition("je", last_flag_setter, last_flag_ops)
++            if prior_zero:
++                stmts.append(f"if (ecx == 0) _flags = {prior_zero[0]};")
++
+         # NEG sets CF when its operand is nonzero. Preserve that value when
+         # a later SBB/ADC consumes it, skipping over EFLAGS-preserving
+         # instructions (e.g. neg eax; push edi; sbb eax, eax).
+@@ -3406,14 +3417,15 @@
+             pass  # SETcc doesn't set flags
+         elif curr.mnemonic.startswith("rep"):
+             # rep movsb/movsd = data copy, preserves flags
+-            # repe cmpsb/repne scasb = comparison, sets flags
++            # All repeated CMPS/SCAS widths set flags, not just byte forms.
+             rest = curr.op_str.strip() if hasattr(curr, 'op_str') else ""
+             raw_m = curr.mnemonic
+-            if "cmpsb" in raw_m or "scasb" in raw_m:
++            compare_names = ("cmpsb", "cmpsw", "cmpsd", "scasb", "scasw", "scasd")
++            if any(name in raw_m for name in compare_names):
+                 last_flag_setter = raw_m
+                 last_flag_ops = list(curr.operands)
+-            elif "cmpsb" in rest or "scasb" in rest:
+-                last_flag_setter = raw_m
++            elif any(name in rest for name in compare_names):
++                last_flag_setter = raw_m + " " + rest
+                 last_flag_ops = list(curr.operands)
+             else:
+                 pass  # rep movs/stos = data movement, flags preserved
+--- a/tools/recomp/test_lifter_string_compare.py
++++ b/tools/recomp/test_lifter_string_compare.py
+@@ -5,6 +5,28 @@
+ 
+ 
+ class StringCompareLifterTest(unittest.TestCase):
++    def test_wide_comparison_replaces_prior_flags_and_preserves_zero_count(self):
++        for mnemonic in ("repe cmpsw", "repe cmpsd", "repne scasw", "repne scasd"):
++            with self.subTest(mnemonic=mnemonic):
++                width = 4 if mnemonic.endswith("d") else 2
++                compare = Instruction(0, 2, mnemonic, "", "")
++                compare.operands = [
++                    Operand(type="mem", mem_base="esi", mem_size=width),
++                    Operand(type="mem", mem_base="edi", mem_size=width),
++                ]
++                jump = Instruction(2, 2, "jne", "0x10", "750c")
++                jump.jump_target = 0x10
++                prior = Operand(type="reg", reg="edx")
++                lifter = Lifter()
++                lifter.func_start, lifter.func_end = 0, 0x20
++                lifted, state = lift_basic_block(
++                    lifter, BasicBlock(start=0, instructions=[compare, jump]),
++                    ("test", [prior, prior]))
++                self.assertEqual(state[0], mnemonic)
++                generated = "\n".join(lifted)
++                self.assertIn("if (ecx == 0) _flags = TEST_Z(_fa, _fb);", generated)
++                self.assertIn("if ((_flags == 0)) goto loc_00000010;", generated)
++
+     def test_repne_scasb_scans_until_equal(self):
+         scan = Instruction(
+             0, 2, "repne scasb", "al, byte ptr es:[edi]", "f2ae")

@@ -1,0 +1,45 @@
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -215,7 +215,7 @@
+ /* Optional bounded, local PCM capture starts at the first non-silent frame. */
+ static FILE *s_pcm_dump;
+ static int s_pcm_checked;
+-static unsigned s_pcm_frames;
++static unsigned s_pcm_frames, s_pcm_limit=480000;
+ static const char *s_pcm_path, *s_pcm_trigger;
+ static unsigned s_pcm_poll;
+ static void capture_pcm(const int16_t samples[][2])
+@@ -224,6 +224,13 @@
+         s_pcm_checked = 1;
+         s_pcm_path = getenv("RECOMP_AUDIO_DUMP");
+         s_pcm_trigger = getenv("RECOMP_AUDIO_TRIGGER");
++        if(s_pcm_path && *s_pcm_path) {
++            const char *seconds=getenv("RECOMP_AUDIO_SECONDS");
++            if(seconds && *seconds) {
++                char *end;unsigned long value=strtoul(seconds,&end,10);
++                if(!*end && value>=1 && value<=60)s_pcm_limit=(unsigned)value*48000;
++            }
++        }
+         if (s_pcm_path && *s_pcm_path && (!s_pcm_trigger || !*s_pcm_trigger)) {
+             s_pcm_dump = fopen(s_pcm_path, "wb");
+             if (!s_pcm_dump) perror("RECOMP_AUDIO_DUMP");
+@@ -255,15 +262,15 @@
+             if(value>peak)peak=value;
+         }
+         if (!peak) return;
+-        fprintf(stderr, "[APU] First non-silent output: peak=%d; capturing 10 seconds of 48 kHz stereo s16 PCM\n", peak);
+-    }
+-    unsigned count=480000-s_pcm_frames;
++        fprintf(stderr, "[APU] First non-silent output: peak=%d; capturing %u seconds of 48 kHz stereo s16 PCM\n", peak, s_pcm_limit/48000);
++    }
++    unsigned count=s_pcm_limit-s_pcm_frames;
+     if(count>256)count=256;
+     if(fwrite(samples, sizeof(samples[0]), count, s_pcm_dump)!=count) {
+         perror("RECOMP_AUDIO_DUMP write"); fclose(s_pcm_dump);s_pcm_dump=NULL;return;
+     }
+     s_pcm_frames+=count;
+-    if(s_pcm_frames==480000) { fclose(s_pcm_dump);s_pcm_dump=NULL; }
++    if(s_pcm_frames==s_pcm_limit) { fclose(s_pcm_dump);s_pcm_dump=NULL; }
+ }
+ 
+ void mcpx_apu_monitor_init(MCPXAPUState *d, Error **errp)

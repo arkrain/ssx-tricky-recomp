@@ -1,0 +1,111 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -24,6 +24,7 @@
+  * has not given us any vertices". RECOMP_FB_DUMP=<prefix> writes the surface to
+  * <prefix>NNN.bmp, so the result can be looked at without a display.
+  */
++#include "nv2a_vertex.h"
+ #include <math.h>
+ #include <stdio.h>
+ #include <stdint.h>
+@@ -226,6 +227,7 @@
+     uint32_t   inline_count;
+     /* Current values of the immediate-mode attributes, and how many complete
+      * vertices they have produced in this batch. */
++    float      imm_attr[16][4];
+     float      imm_pos[4];
+     uint32_t   imm_diffuse;
+     float      imm_tex[2];
+@@ -1156,14 +1158,32 @@
+     float p[3][4], uv[3][2];
+     int textured;
+ 
+-    if (!fetch_attr(&s_gpu.attr[0], i0, p[0])
+-     || !fetch_attr(&s_gpu.attr[0], i1, p[1])
+-     || !fetch_attr(&s_gpu.attr[0], i2, p[2]))
+-        return;
+-
+-    textured = fetch_texcoord(i0, uv[0])
+-            && fetch_texcoord(i1, uv[1])
+-            && fetch_texcoord(i2, uv[2]);
++    if (ssx_vertex_active()) {
++        uint32_t indices[3] = {i0, i1, i2};
++        for (int v = 0; v < 3; ++v) {
++            float in[16][4], out[13][4];
++            for (int a = 0; a < 16; ++a)
++                if (!fetch_attr(&s_gpu.attr[a], indices[v], in[a]))
++                    memcpy(in[a], s_gpu.imm_attr[a], sizeof(in[a]));
++            if (!ssx_vertex_execute(in, out)) return;
++            memcpy(p[v], out[0], sizeof(p[v]));
++            uv[v][0] = out[9][0]; uv[v][1] = out[9][1];
++            if (tex_size_from_format(s_gpu.tex.color)) {
++                uv[v][0] *= s_gpu.tex.width; uv[v][1] *= s_gpu.tex.height;
++            }
++            if (!v) {
++                uint32_t c[4];
++                for (int k = 0; k < 4; ++k) c[k] = (uint32_t)(fminf(1, fmaxf(0, out[3][k])) * 255);
++                argb = (c[3] << 24) | (c[0] << 16) | (c[1] << 8) | c[2];
++            }
++        }
++        textured = 1;
++    } else {
++        if (!fetch_attr(&s_gpu.attr[0], i0, p[0])
++         || !fetch_attr(&s_gpu.attr[0], i1, p[1])
++         || !fetch_attr(&s_gpu.attr[0], i2, p[2])) return;
++        textured = fetch_texcoord(i0, uv[0]) && fetch_texcoord(i1, uv[1]) && fetch_texcoord(i2, uv[2]);
++    }
+ 
+     raster_triangle(p[0], p[1], p[2], argb,
+                     textured ? (const float (*)[2])uv : NULL);
+@@ -1176,7 +1196,7 @@
+ 
+     if (s_gpu.idx_count < 3)
+         return;
+-    if (!batch_is_screen_space()) {
++    if (!ssx_vertex_active() && !batch_is_screen_space()) {
+         s_gpu.batches_untransformed++;
+         return;
+     }
+@@ -1509,6 +1529,9 @@
+     if (method >= NV097_SET_VERTEX_DATA2F_M
+             && method < NV097_SET_VERTEX_DATA2F_M + NV_VERTEX_ATTRS * 8) {
+         uint32_t off = method - NV097_SET_VERTEX_DATA2F_M;
++        s_gpu.imm_attr[off / 8][(off % 8) / 4] = v.f;
++        s_gpu.imm_attr[off / 8][2] = 0;
++        s_gpu.imm_attr[off / 8][3] = 1;
+         if (off / 8 == 9)                /* attribute 9 is texture coord 0 */
+             s_gpu.imm_tex[(off % 8) / 4] = v.f;
+         return 1;
+@@ -1517,6 +1540,7 @@
+             && method < NV097_SET_VERTEX_DATA4F_M + NV_VERTEX_ATTRS * 16) {
+         uint32_t off = method - NV097_SET_VERTEX_DATA4F_M;
+         uint32_t attr = off / 16, c = (off % 16) / 4;
++        s_gpu.imm_attr[attr][c] = v.f;
+         if (attr == 0) {
+             s_gpu.imm_pos[c] = v.f;
+             if (c == 3)
+@@ -1528,6 +1552,8 @@
+     }
+     if (method >= NV097_SET_VERTEX_DATA4UB
+             && method < NV097_SET_VERTEX_DATA4UB + NV_VERTEX_ATTRS * 4) {
++        unsigned a = (method - NV097_SET_VERTEX_DATA4UB) / 4;
++        for (int k = 0; k < 4; ++k) s_gpu.imm_attr[a][k] = ((param >> (k * 8)) & 255) / 255.0f;
+         if ((method - NV097_SET_VERTEX_DATA4UB) / 4 == 3)   /* diffuse */
+             s_gpu.imm_diffuse = param;
+         return 1;
+@@ -1567,6 +1593,7 @@
+     static uint32_t semaphore_dma, semaphore_offset;
+     if (!inited) {
+         inited = 1;
++        for (int a = 0; a < 16; ++a) s_gpu.imm_attr[a][3] = 1;
+         s_gpu.min_x = s_gpu.min_y = 1e30f;
+         s_gpu.max_x = s_gpu.max_y = -1e30f;
+     }
+@@ -1595,6 +1622,7 @@
+         note_unhandled(method, param);
+         return;
+     }
++    if (ssx_vertex_method(method, param)) return;
+     switch (method) {
+     case 0x0100: /* NV097_NO_OPERATION: nonzero argument requests notification */
+         if (param) queue_gpu_notification(param);

@@ -1,0 +1,38 @@
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -394,15 +394,30 @@
+ 
+     int target = xa2_get_target_frames();
+     if (target > 0) {
+-        /* The device consumes the PCM at 48 kHz. Produce until its bounded
+-         * lead is restored; do not let two independent clocks slowly drain
+-         * the queue. Timed waits release the APU lock for MMIO/shutdown. */
++        /* Keep a bounded device-clock lead, but space VP/EP production out.
++         * SDL consumes a whole device period at once; restoring the target
++         * immediately would advance guest cursors by 512+ samples in a burst
++         * and overtake software ring-buffer refillers. One block of queue
++         * hysteresis lets the rational 48-kHz clock smooth those periods. */
+         int64_t start_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+         while (!d->pause_requested && !qatomic_read(&d->exiting) &&
+-               xa2_get_queued_frames() >= target)
++               xa2_get_queued_frames() >= target + MIXER_FRAME_SAMPLES)
+             qemu_cond_timedwait(&d->cond, &d->lock, 1);
++        /* Restore a depleted queue without carrying an obsolete deadline.
++         * The normal queue oscillates around the target, well above this. */
++        if (xa2_get_queued_frames() < target / 2)
++            d->next_frame_time_thirds_us = 0;
++        int64_t now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
++        apu_deadline_prepare(&d->next_frame_time_thirds_us, now_us);
++        while (!d->pause_requested && !qatomic_read(&d->exiting)) {
++            int64_t remaining_ms = apu_deadline_remaining_ms(
++                d->next_frame_time_thirds_us,
++                qemu_clock_get_us(QEMU_CLOCK_REALTIME));
++            if (remaining_ms <= 0) break;
++            qemu_cond_timedwait(&d->cond, &d->lock, (int)remaining_ms);
++        }
++        apu_deadline_advance(&d->next_frame_time_thirds_us);
+         d->sleep_acc_us += (int)(qemu_clock_get_us(QEMU_CLOCK_REALTIME) - start_us);
+-        d->next_frame_time_thirds_us = 0;
+         return;
+     }
+ 

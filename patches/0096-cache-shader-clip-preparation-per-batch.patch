@@ -1,0 +1,114 @@
+diff --git a/src/kernel/nv2a_pb_exec.c b/src/kernel/nv2a_pb_exec.c
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1487,13 +1487,38 @@
+      * preserving double intermediate precision and operation order. */
+     for(int k=0;k<28;k++)out[k]=(float)(a[k]+t*((double)b[k]-a[k]));
+ }
+-static void raster_shader_triangle(float p[3][4], uint32_t argb)
++typedef struct { float homogeneous[4]; unsigned code; int valid; } ShaderClipVertex;
++static void prepare_shader_clip_vertex(const float p[4], ShaderClipVertex *v)
++{
++    v->valid=0;v->code=0;
++    for(int k=0;k<4;k++) if(!isfinite(p[k])) return;
++    v->valid=1;
++    memcpy(v->homogeneous,p,16);
++    for(int k=0;k<3;k++)v->homogeneous[k]*=p[3];
++    const float *a=v->homogeneous;
++    /* Overflow retains the original slow-path behavior, rather than being
++     * mistaken for an ordinary outside-plane rejection. */
++    if(!isfinite(a[0]) || !isfinite(a[1]) || !isfinite(a[2])) {
++        v->code=128;return;
++    }
++    float clip_far;
++    memcpy(&clip_far,&s_render_reg[0x398/4],4);
++    if(!isfinite(clip_far) || clip_far<=0) clip_far=16777215.0f;
++    unsigned code=(a[3]-1e-5f<0);
++    code|=(a[0]-s_gpu.clip_x*a[3]<0)<<1;
++    code|=(a[0]-(s_gpu.clip_x+s_gpu.clip_w)*a[3]>0)<<2;
++    code|=(a[1]-s_gpu.clip_y*a[3]<0)<<3;
++    code|=(a[1]-(s_gpu.clip_y+s_gpu.clip_h)*a[3]>0)<<4;
++    code|=(a[2]<0)<<5;
++    code|=(clip_far*a[3]-a[2]<0)<<6;
++    v->code=code;
++}
++static void raster_shader_triangle_prepared(const ShaderClipVertex vertices[3], uint32_t argb)
+ {
+     float homogeneous[3][4];
+     for(int v=0;v<3;v++) {
+-        for(int k=0;k<4;k++) if(!isfinite(p[v][k])) return;
+-        memcpy(homogeneous[v],p[v],16);
+-        for(int k=0;k<3;k++) homogeneous[v][k]*=p[v][3];
++        if(!vertices[v].valid)return;
++        memcpy(homogeneous[v],vertices[v].homogeneous,16);
+     }
+     float clip_far;
+     memcpy(&clip_far,&s_render_reg[0x398/4],4);
+@@ -1504,17 +1529,10 @@
+      * expressions as the slow path, preserving boundary rounding. */
+     unsigned outside=0, common=127;
+     for(int v=0;v<3;v++) {
+-        const float *a=homogeneous[v];
+-        if(!isfinite(a[0]) || !isfinite(a[1]) || !isfinite(a[2])) {
++        unsigned code=vertices[v].code;
++        if(code==128) {
+             outside=127;common=0;break;
+         }
+-        unsigned code=(a[3]-1e-5f<0);
+-        code|=(a[0]-s_gpu.clip_x*a[3]<0)<<1;
+-        code|=(a[0]-(s_gpu.clip_x+s_gpu.clip_w)*a[3]>0)<<2;
+-        code|=(a[1]-s_gpu.clip_y*a[3]<0)<<3;
+-        code|=(a[1]-(s_gpu.clip_y+s_gpu.clip_h)*a[3]>0)<<4;
+-        code|=(a[2]<0)<<5;
+-        code|=(clip_far*a[3]-a[2]<0)<<6;
+         outside|=code;common&=code;
+     }
+     if(common)return;
+@@ -1584,9 +1602,16 @@
+     }
+ }
+ 
++static void raster_shader_triangle(float p[3][4], uint32_t argb)
++{
++    ShaderClipVertex vertices[3];
++    for(int v=0;v<3;v++)prepare_shader_clip_vertex(p[v],&vertices[v]);
++    raster_shader_triangle_prepared(vertices,argb);
++}
++
+ /* Indexed triangles share vertices. State is immutable within raster_batch;
+  * invalidate the cache at every batch, including failed/empty batches. */
+-static struct { uint32_t index, generation; float out[13][4]; } s_vertex_cache[256];
++static struct { uint32_t index, generation; float out[13][4]; ShaderClipVertex clip; } s_vertex_cache[256];
+ static uint32_t s_vertex_generation;
+ static uint32_t s_vertex_inputs=0xffff;
+ static struct { uint32_t generation; float value[4]; } s_uniform_input[16];
+@@ -1608,6 +1633,7 @@
+ static void raster_indexed(uint32_t i0, uint32_t i1, uint32_t i2, uint32_t argb)
+ {
+     float p[3][4], uv[3][2];
++    ShaderClipVertex clip[3];
+     int textured;
+     s_triangle_colors=0;
+ 
+@@ -1632,10 +1658,11 @@
+                     float value=out[c][k];
+                     out[c][k]=value<0?0:value<1?value:1;
+                 }
++                prepare_shader_clip_vertex(out[0],&s_vertex_cache[slot].clip);
+                 s_vertex_cache[slot].index=indices[v];
+                 s_vertex_cache[slot].generation=s_vertex_generation;
+             }
+-            memcpy(p[v], out[0], sizeof(p[v]));
++            clip[v]=s_vertex_cache[slot].clip;
+             memcpy(s_triangle_color[v][0],out[3],16);
+             memcpy(s_triangle_color[v][1],out[4],16);
+             s_triangle_colors=1;
+@@ -1657,7 +1684,7 @@
+         textured = fetch_texcoord(i0, uv[0]) && fetch_texcoord(i1, uv[1]) && fetch_texcoord(i2, uv[2]);
+     }
+ 
+-    if (ssx_vertex_active()) raster_shader_triangle(p,argb);
++    if (ssx_vertex_active()) raster_shader_triangle_prepared(clip,argb);
+     else raster_triangle(p[0], p[1], p[2], argb,
+                     textured ? (const float (*)[2])uv : NULL);
+ }

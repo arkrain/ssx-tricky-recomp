@@ -1,0 +1,125 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1534,6 +1534,33 @@
+     }
+     return 0;
+ }
++/* One producer (PB thread), one consumer (kernel timer thread). Preserve
++ * notification arguments until the guest handles its software-method IRQ. */
++#define GPU_NOTIFY_CAPACITY 256
++static struct { uint32_t value, color; } gpu_notifications[GPU_NOTIFY_CAPACITY];
++static volatile LONG gpu_notify_head, gpu_notify_tail;
++int nv2a_pb_pop_notification(uint32_t *value, uint32_t *color)
++{
++    LONG head = InterlockedCompareExchange(&gpu_notify_head, 0, 0);
++    if (head == InterlockedCompareExchange(&gpu_notify_tail, 0, 0)) return 0;
++    *value = gpu_notifications[head].value;
++    *color = gpu_notifications[head].color;
++    InterlockedExchange(&gpu_notify_head, (head + 1) % GPU_NOTIFY_CAPACITY);
++    return 1;
++}
++static void queue_gpu_notification(uint32_t value)
++{
++    LONG tail = InterlockedCompareExchange(&gpu_notify_tail, 0, 0);
++    LONG next = (tail + 1) % GPU_NOTIFY_CAPACITY;
++    if (next == InterlockedCompareExchange(&gpu_notify_head, 0, 0)) {
++        fprintf(stderr, "[GPU] software notification queue overflow\n");
++        abort();
++    }
++    gpu_notifications[tail].value = value;
++    gpu_notifications[tail].color = s_gpu.clear_color;
++    InterlockedExchange(&gpu_notify_tail, next);
++}
++
+ void nv2a_pb_exec_method(uint32_t subch, uint32_t method, uint32_t param)
+ {
+     static int inited;
+@@ -1569,6 +1596,9 @@
+         return;
+     }
+     switch (method) {
++    case 0x0100: /* NV097_NO_OPERATION: nonzero argument requests notification */
++        if (param) queue_gpu_notification(param);
++        break;
+     case 0x01A4: /* NV097_SET_CONTEXT_DMA_SEMAPHORE */
+         semaphore_dma = param;
+         break;
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -2015,15 +2015,32 @@
+         return;
+ 
+     now = (long long)GetTickCount64();
+-    if (now < next_ms)
+-        return;
+-    next_ms = now + 16;                       /* ~60 Hz */
++    int vblank = now >= next_ms;
++    if (vblank) next_ms = now + 16;            /* ~60 Hz */
+ 
+     if (!xbox_GetConnectedInterrupt(NV2A_VECTOR))
+         return;
+ 
+-    BRIDGE_MEM32(XBOX_NV2A_REG_BASE + NV2A_PCRTC_INTR_0) |= NV2A_PCRTC_INTR_VBLANK;
+-    BRIDGE_MEM32(XBOX_NV2A_REG_BASE + NV2A_PMC_INTR_0)   |= NV2A_PMC_INTR_PCRTC;
++    if (vblank) {
++        BRIDGE_MEM32(XBOX_NV2A_REG_BASE + NV2A_PCRTC_INTR_0) |= NV2A_PCRTC_INTR_VBLANK;
++        if (BRIDGE_MEM32(0xFD600140u) & 1)
++            BRIDGE_MEM32(0xFD000100u) |= NV2A_PMC_INTR_PCRTC;
++    }
++    /* Deliver software methods through the original PGRAPH ISR/DPC. */
++    if (!BRIDGE_MEM32(0xFD400100u)) {
++        extern int nv2a_pb_pop_notification(uint32_t *, uint32_t *);
++        uint32_t value, color;
++        if (nv2a_pb_pop_notification(&value, &color)) {
++            BRIDGE_MEM32(0xFD400704u) = 0x100; /* channel/subchannel zero, NOP */
++            BRIDGE_MEM32(0xFD400708u) = value;
++            BRIDGE_MEM32(0xFD401A88u) = color;
++            BRIDGE_MEM32(0xFD400108u) = 1; /* NSOURCE_NOTIFICATION */
++            BRIDGE_MEM32(0xFD400100u) = 1u << 20; /* INTR_ERROR */
++            if (BRIDGE_MEM32(0xFD400140u) & (1u << 20))
++                BRIDGE_MEM32(0xFD000100u) |= 1u << 12;
++        }
++    }
++    if (!(BRIDGE_MEM32(0xFD000100u) & ((1u << 24) | (1u << 12)))) return;
+ 
+     {
+         static unsigned n;
+--- a/src/kernel/xbox_memory_layout.c
++++ b/src/kernel/xbox_memory_layout.c
+@@ -180,10 +180,10 @@
+      *
+      * Holding them at zero is correct rather than convenient: nothing here
+      * ever raises a GPU interrupt, so "none pending" is the truth. */
+-    { 0x000100, 0xFEFFFFFFu },  /* PMC: PCRTC cleared by guest W1C */
++    { 0x000100, 0xFEFFEFFFu },  /* PMC: PCRTC/PGRAPH cleared by guest W1C */
+     { 0x001100, 0xFFFFFFFFu },  /* PBUS_INTR_0   */
+     { 0x002100, 0xFFFFFFFFu },  /* PFIFO_INTR_0  */
+-    { 0x400100, 0xFFFFFFFFu },  /* PGRAPH_INTR   */
++    /* PGRAPH_INTR is acknowledged by generated guest stores. */
+     /* PCRTC_INTR_0 is acknowledged by generated guest stores. */
+ };
+ 
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -375,13 +375,16 @@
+  * the summary pending until guest acknowledgement, including across DPCs. */
+ static inline void RECOMP_STORE32(uint32_t addr, uint32_t value)
+ {
+-    if (addr == 0xFD600100u || addr == 0xFD600140u) {
+-        if (addr == 0xFD600100u) MEM32(addr) &= ~value;
++    if (addr == 0xFD600100u || addr == 0xFD600140u ||
++        addr == 0xFD400100u || addr == 0xFD400140u) {
++        uint32_t status = addr & ~0x40u;
++        uint32_t bit = addr >= 0xFD600000u ? 1u << 24 : 1u << 12;
++        if (addr == status) MEM32(addr) &= ~value;
+         else MEM32(addr) = value;
+-        if (MEM32(0xFD600100u) & MEM32(0xFD600140u) & 1u)
+-            MEM32(0xFD000100u) |= 1u << 24;
++        if (MEM32(status) & MEM32(status + 0x40u))
++            MEM32(0xFD000100u) |= bit;
+         else
+-            MEM32(0xFD000100u) &= ~(1u << 24);
++            MEM32(0xFD000100u) &= ~bit;
+     } else {
+         MEM32(addr) = value;
+     }

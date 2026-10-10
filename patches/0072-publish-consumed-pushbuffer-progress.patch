@@ -1,0 +1,65 @@
+--- a/src/kernel/nv2a_pb_scan.c
++++ b/src/kernel/nv2a_pb_scan.c
+@@ -137,7 +137,8 @@
+     return value;
+ }
+ 
+-uint32_t nv2a_pb_scan(uint32_t start_va, uint32_t end_va)
++uint32_t nv2a_pb_scan_progress(uint32_t start_va, uint32_t end_va,
++                               volatile uint32_t *get)
+ {
+     const uint8_t *mem = (const uint8_t *)xbox_GetMemoryOffset();
+     uint32_t va = start_va;
+@@ -152,7 +153,7 @@
+     while (va != end_va && words < 0x100000u) {
+         if (va < 0x80000000u || va >= 0x84000000u)
+             break;
+-        uint32_t w = *(const uint32_t *)(mem + va);
++        uint32_t w = *(const volatile uint32_t *)(mem + va);
+         if (s_remaining) {
+             /* The method inventory is diagnostic, not execution state. Its
+              * linear search is expensive for every vertex-program word. */
+@@ -188,6 +189,12 @@
+             unknown++;
+             break; /* Never acknowledge an undecoded command. */
+         }
++        /* Publish only consumed commands, including ring jumps. The guest
++         * patches queued NOOPs into wake-up notifications after checking GET.
++         * Delaying GET until the whole batch finishes can make it patch an
++         * already executed NOOP and then wait forever for that notification.
++         * Keep a method parameter pending until its execution has completed. */
++        if (get) *get = va & 0x0FFFFFFFu;
+         words++;
+     }
+     if (unknown)
+@@ -198,3 +205,8 @@
+     s_tot_segments++;
+     return va;
+ }
++
++uint32_t nv2a_pb_scan(uint32_t start_va, uint32_t end_va)
++{
++    return nv2a_pb_scan_progress(start_va, end_va, NULL);
++}
+--- a/src/kernel/xbox_memory_layout.c
++++ b/src/kernel/xbox_memory_layout.c
+@@ -598,7 +598,7 @@
+         /* Consume from the real GET cursor, following ring jumps. Acknowledge
+          * only after execution: the guest may immediately reuse completed RAM. */
+         {
+-            extern uint32_t nv2a_pb_scan(uint32_t, uint32_t);
++            extern uint32_t nv2a_pb_scan_progress(uint32_t, uint32_t, volatile uint32_t *);
+             extern void nv2a_pb_scan_report(void);
+             volatile uint32_t *get = (volatile uint32_t *)((char *)regs + NV2A_USER_DMA_GET);
+             volatile uint32_t *put_reg = (volatile uint32_t *)((char *)regs + NV2A_USER_DMA_PUT);
+@@ -606,8 +606,8 @@
+             static DWORD last_report, last_trace;
+             DWORD now_ms = GetTickCount();
+             if (before != put) {
+-                uint32_t consumed = nv2a_pb_scan(XBOX_CONTIG_BASE | before,
+-                                                XBOX_CONTIG_BASE | put);
++                uint32_t consumed = nv2a_pb_scan_progress(XBOX_CONTIG_BASE | before,
++                                                XBOX_CONTIG_BASE | put, get);
+                 *get = consumed & 0x0FFFFFFFu;
+             }
+             if (s_nv2a_trace && now_ms - last_report > 10000) {

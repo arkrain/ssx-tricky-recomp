@@ -1,0 +1,55 @@
+diff --git a/src/video/fb_present.c b/src/video/fb_present.c
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -281,13 +281,14 @@
+     SDL_Surface *surface = NULL;
+     unsigned frames = 0;
+     int quit_requested = 0;
++    int exit_status = EXIT_SUCCESS;
+     if (SDL_InitSubSystem(SDL_INIT_VIDEO)) goto fail;
+     window = SDL_CreateWindow("SSX Tricky — native framebuffer", SDL_WINDOWPOS_CENTERED,
+                               SDL_WINDOWPOS_CENTERED, 640, 480, SDL_WINDOW_RESIZABLE);
+     if (!window) goto fail;
+     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_SOFTWARE);
+     if (!renderer) goto fail;
+-    SDL_RenderSetLogicalSize(renderer, 640, 480);
++    if (SDL_RenderSetLogicalSize(renderer, 640, 480)) goto fail;
+     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                                 SDL_TEXTUREACCESS_STREAMING, 640, 480);
+     surface = SDL_CreateRGBSurfaceWithFormat(0, 640, 480, 32, SDL_PIXELFORMAT_ARGB8888);
+@@ -356,6 +357,10 @@
+     }
+ fail:
+     fprintf(stderr, "[FBWIN] SDL display failed: %s\n", SDL_GetError());
++    /* A requested window is essential: do not leave an invisible guest
++     * running after initialization fails. */
++    quit_requested = 1;
++    exit_status = EXIT_FAILURE;
+ done:
+     SDL_FreeSurface(surface);
+     SDL_DestroyTexture(texture);
+@@ -367,7 +372,7 @@
+         /* Guest/GPU workers have no cooperative stop protocol yet. Driver
+          * atexit hooks can otherwise tear down a context still in use. */
+         fflush(NULL);
+-        _Exit(EXIT_SUCCESS);
++        _Exit(exit_status);
+     }
+     return NULL;
+ }
+@@ -386,9 +391,14 @@
+                 pthread_condattr_destroy(&attr);
+             }
+         }
+-        if (!pthread_create(&thread, NULL, fb_sdl_thread, NULL)) {
++        int error = pthread_create(&thread, NULL, fb_sdl_thread, NULL);
++        if (!error) {
+             fb_started = 1;
+             pthread_detach(thread);
++        } else {
++            fprintf(stderr, "[FBWIN] display thread failed: %s\n", strerror(error));
++            fflush(NULL);
++            _Exit(EXIT_FAILURE);
+         }
+     }
+     pthread_mutex_unlock(&fb_lock);

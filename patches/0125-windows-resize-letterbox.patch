@@ -1,0 +1,36 @@
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -210,9 +210,30 @@
+             fb_convert(src, s_fb_pitch / s_fb_width);
+         }
+         if(s_rgb && (movie || (s_fb_va && s_fb_pitch))) {
+-            StretchDIBits(hdc, 0, 0, (int)s_fb_width, (int)s_fb_height,
+-                          0, 0, (int)s_fb_width, (int)s_fb_height,
+-                          s_rgb, &bi, DIB_RGB_COLORS, SRCCOPY);
++            RECT client;
++            if (GetClientRect(hwnd, &client) && client.right > 0 && client.bottom > 0) {
++                int width = client.right, height = client.bottom;
++                if ((int64_t)width * s_fb_height > (int64_t)height * s_fb_width)
++                    width = (int)((int64_t)height * s_fb_width / s_fb_height);
++                else
++                    height = (int)((int64_t)width * s_fb_height / s_fb_width);
++                int left = (client.right - width) / 2;
++                int top = (client.bottom - height) / 2;
++                /* Clear only the letterbox bars, avoiding a black flash over
++                 * the image on each presentation. */
++                HBRUSH black = (HBRUSH)GetStockObject(BLACK_BRUSH);
++                RECT bars[4] = {
++                    {0, 0, client.right, top},
++                    {0, top + height, client.right, client.bottom},
++                    {0, top, left, top + height},
++                    {left + width, top, client.right, top + height}
++                };
++                for (int i = 0; i < 4; ++i) FillRect(hdc, &bars[i], black);
++                SetStretchBltMode(hdc, COLORONCOLOR);
++                StretchDIBits(hdc, left, top, width, height,
++                              0, 0, (int)s_fb_width, (int)s_fb_height,
++                              s_rgb, &bi, DIB_RGB_COLORS, SRCCOPY);
++            }
+         }
+         {
+             /* One dump, a few seconds in, so the title has had time to render

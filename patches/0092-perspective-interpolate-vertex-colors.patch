@@ -1,0 +1,23 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1261,14 +1261,16 @@
+             if (s_render_reg[0x1e60/4]&15) {
+                 float diffuse[4],specular[4]={0,0,0,1},tex[4][4]={{0,0,0,1},{0,0,0,1},{0,0,0,1},{0,0,0,1}};
+                 rc_unpack(argb,diffuse);rc_unpack(texel,tex[0]);
+-                if (s_triangle_colors) for(int k=0;k<4;k++) {
+-                    diffuse[k]=(w1*s_triangle_color[0][0][k]+w2*s_triangle_color[1][0][k]+w0*s_triangle_color[2][0][k])/area;
+-                    specular[k]=(w1*s_triangle_color[0][1][k]+w2*s_triangle_color[1][1][k]+w0*s_triangle_color[2][1][k])/area;
+-                }
+                 if (s_triangle_colors) {
+                     float weight[3]={w1/a[3],w2/b[3],w0/c[3]};
+                     float total=weight[0]+weight[1]+weight[2];
+                     if (!isfinite(total)||total==0) continue;
++                    /* Color outputs use the same perspective denominator
++                     * as texture coordinates, including their alpha lanes. */
++                    for(int k=0;k<4;k++) {
++                        diffuse[k]=(weight[0]*s_triangle_color[0][0][k]+weight[1]*s_triangle_color[1][0][k]+weight[2]*s_triangle_color[2][0][k])/total;
++                        specular[k]=(weight[0]*s_triangle_color[0][1][k]+weight[1]*s_triangle_color[1][1][k]+weight[2]*s_triangle_color[2][1][k])/total;
++                    }
+                     for(int st=0;st<4;st++) {
+                         unsigned mode=(s_render_reg[0x1e70/4]>>(st*5))&31;
+                         if (!mode) { tex[st][0]=tex[st][1]=tex[st][2]=0;tex[st][3]=1;continue; }

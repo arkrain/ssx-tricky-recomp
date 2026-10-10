@@ -1,0 +1,89 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -38,6 +38,17 @@
+  * Morton order, not a second one that can disagree with it. */
+ #include "../d3d/d3d8_swizzle.h"
+ #include "nv2a_semaphore.h"
++
++static int pb_verbose(void) {
++    static int value=-1;
++    if(value<0)value=getenv("RECOMP_PB_EXEC_VERBOSE")!=NULL;
++    return value;
++}
++static int combiner_trace(void) {
++    static int value=-1;
++    if(value<0)value=getenv("SSX_COMBINER_TRACE")!=NULL;
++    return value;
++}
+ 
+ extern ptrdiff_t xbox_GetMemoryOffset(void);
+ extern void xbox_FramebufferWindowSet(uint32_t fb_va, uint32_t pitch);
+@@ -1496,7 +1507,7 @@
+ static void raster_batch(void)
+ {
+     if (s_skip_frame) return;
+-    if (getenv("SSX_COMBINER_TRACE")) {
++    if (combiner_trace()) {
+         static unsigned count; static uint32_t hashes[32];
+         uint32_t h=s_render_reg[0x1e60/4];
+         for (unsigned a=0x260; a<=0x28c; a+=4) h=h*33+s_render_reg[a/4];
+@@ -1634,7 +1645,7 @@
+             memcpy(s_gpu.imm_attr[a], value, sizeof value);
+     }
+ 
+-    if (getenv("RECOMP_PB_EXEC_VERBOSE")) {
++    if (pb_verbose()) {
+         static int shown;
+         if (shown++ < 6) {
+             fprintf(stderr, "  [GPU] prim %u, %u indices, pos attr:"
+@@ -1946,7 +1957,7 @@
+     /* Bring-up: the first parameters each surface method carries. A wrong
+      * pitch or clip is indistinguishable from a method never arriving unless
+      * the values are visible. */
+-    if (getenv("RECOMP_PB_EXEC_VERBOSE")) {
++    if (pb_verbose()) {
+         static int shown[8];
+         int slot = -1;
+         switch (method) {
+@@ -2005,7 +2016,7 @@
+             fprintf(stderr, "[GPU] rejected semaphore DMA=%u offset=0x%X value=%u\n",
+                     semaphore_dma, semaphore_offset, param);
+             note_unhandled(method, param);
+-        } else if (getenv("RECOMP_PB_EXEC_VERBOSE")) {
++        } else if (pb_verbose()) {
+             fprintf(stderr, "[GPU] semaphore DMA=%u offset=0x%X value=%u\n",
+                     semaphore_dma, semaphore_offset, param);
+         }
+@@ -2118,7 +2129,7 @@
+         /* And this is a completed swap, which is what a title's own swap
+          * counter counts -- see xbox_Nv2aFrameCounterFlip. */
+         xbox_Nv2aFrameCounterFlip();
+-        if (getenv("RECOMP_PB_EXEC_VERBOSE")) {
++        if (pb_verbose()) {
+             static unsigned n;
+             if (n++ < 8) {
+                 fprintf(stderr, "  [GPU] flip %u: read=%u write=%u\n",
+--- a/src/kernel/nv2a_pb_scan.c
++++ b/src/kernel/nv2a_pb_scan.c
+@@ -131,6 +131,12 @@
+ static uint32_t s_remaining, s_method, s_subch, s_return;
+ static int s_noninc, s_in_call;
+ 
++static int scan_enabled(void) {
++    static int value=-1;
++    if(value<0)value=getenv("RECOMP_PB_SCAN")!=NULL;
++    return value;
++}
++
+ uint32_t nv2a_pb_scan(uint32_t start_va, uint32_t end_va)
+ {
+     const uint8_t *mem = (const uint8_t *)xbox_GetMemoryOffset();
+@@ -138,7 +144,7 @@
+     uint32_t words = 0, jumps = 0, unknown = 0;
+     if (s_exec_enabled < 0)
+         s_exec_enabled = getenv("RECOMP_PB_EXEC") != NULL;
+-    if (!(getenv("RECOMP_PB_SCAN") || s_exec_enabled))
++    if (!(scan_enabled() || s_exec_enabled))
+         return end_va;
+     if ((start_va & 3) || (end_va & 3))
+         return start_va;

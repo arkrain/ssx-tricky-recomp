@@ -1,0 +1,105 @@
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -29,6 +29,7 @@
+ #include "xbox_memory_layout.h"
+ #include "recomp_icall_feedback.h"
+ #include "vblank_clock.h"
++#include "diagnostic_counter.h"
+ #include <stdio.h>
+ /* stdlib.h is load-bearing, not tidiness. Without it C89 implicit declaration
+  * makes malloc return `int`, so bridge_spawn_thread truncated its heap pointer
+@@ -311,7 +312,8 @@
+ /* Calls per ordinal, for the ranking in the periodic summary. 378 counters
+  * is smaller than one of the strings this file prints. */
+ static unsigned long long g_ordinal_calls[XBOX_KERNEL_THUNK_TABLE_SIZE];
+-static int g_kernel_call_count = 0;
++/* Diagnostic sequence saturates; it must never reopen logging on overflow. */
++static volatile LONG g_kernel_call_count = 0;
+ 
+ /* How many kernel calls get logged before the log goes quiet.
+  *
+@@ -334,9 +336,9 @@
+     return budget;
+ }
+ 
+-#define KERNEL_LOG_ON()      (g_kernel_call_count <= kernel_log_budget())
++#define KERNEL_LOG_ON()      (diagnostic_counter_read(&g_kernel_call_count) < INT32_MAX && diagnostic_counter_read(&g_kernel_call_count) <= kernel_log_budget())
+ /* Some sites logged at a tighter cap than the rest; keep them proportional. */
+-#define KERNEL_LOG_ON_HALF() (g_kernel_call_count <= kernel_log_budget() / 2)
++#define KERNEL_LOG_ON_HALF() (diagnostic_counter_read(&g_kernel_call_count) < INT32_MAX && diagnostic_counter_read(&g_kernel_call_count) <= kernel_log_budget() / 2)
+ 
+ /* Read Xbox stack arg as uint32_t.
+  * After kernel_thunk_dispatch pops the dummy return address (g_esp += 4),
+@@ -8747,7 +8749,7 @@
+     ordinal = g_slot_ordinals[slot];
+     bridge = g_slot_bridges[slot];
+ 
+-    g_kernel_call_count++;
++    diagnostic_counter_increment(&g_kernel_call_count);
+     if (ordinal < XBOX_KERNEL_THUNK_TABLE_SIZE)
+         g_ordinal_calls[ordinal]++;
+ 
+@@ -8758,7 +8760,7 @@
+          * difference between guessing and knowing when a title recurses. */
+         fprintf(stderr,
+                 "  [KERNEL] #%d: ordinal %u (slot %d) esp=0x%08X ret=0x%08X\n",
+-                g_kernel_call_count, ordinal, slot, g_esp,
++                (int)diagnostic_counter_read(&g_kernel_call_count), ordinal, slot, g_esp,
+                 g_esp ? BRIDGE_MEM32(g_esp) : 0);
+         fflush(stderr);
+     }
+@@ -8767,9 +8769,9 @@
+         static DWORD last_summary_tick = 0;
+         DWORD now = GetTickCount();
+         if (last_summary_tick == 0) last_summary_tick = now;
+-        if (now - last_summary_tick >= 2000 && g_kernel_call_count > 200) {
++        if (now - last_summary_tick >= 2000 && diagnostic_counter_read(&g_kernel_call_count) > 200) {
+             fprintf(stderr, "  [KERNEL] summary: %d total calls, latest ordinal %u (slot %d) esp=0x%08X\n",
+-                    g_kernel_call_count, ordinal, slot, g_esp);
++                    (int)diagnostic_counter_read(&g_kernel_call_count), ordinal, slot, g_esp);
+             /* And which ones, ranked. "Latest" names whatever the sample
+              * happened to land on; the question behind this line is what a
+              * title sitting still is actually asking the kernel for, and
+@@ -8831,7 +8833,7 @@
+                 fprintf(stderr, "  [KWATCH] 0x%08X = %08X before ordinal %u"
+                                 " (call #%d)\n",
+                         g_kernel_watch_va, _watch_before, ordinal,
+-                        g_kernel_call_count);
++                        (int)diagnostic_counter_read(&g_kernel_call_count));
+                 fflush(stderr);
+             }
+         }
+--- /dev/null
++++ b/src/kernel/diagnostic_counter.h
+@@ -0,0 +1,31 @@
++#ifndef SSX_DIAGNOSTIC_COUNTER_H
++#define SSX_DIAGNOSTIC_COUNTER_H
++/* LONG and InterlockedCompareExchange come from the platform kernel headers.
++ * Sequence labels are capped at INT32_MAX. Saturation disables budgeted logs.
++ * On GNU/Clang, the quiet hot path is just a relaxed atomic load. */
++#include <stdint.h>
++static inline LONG diagnostic_counter_read(volatile LONG *counter)
++{
++#if defined(_MSC_VER)
++    return InterlockedCompareExchange(counter, 0, 0);
++#else
++    return __atomic_load_n(counter, __ATOMIC_RELAXED);
++#endif
++}
++static inline LONG diagnostic_counter_increment(volatile LONG *counter)
++{
++    LONG value = diagnostic_counter_read(counter);
++    while (value < INT32_MAX) {
++#if defined(_MSC_VER)
++        LONG observed = InterlockedCompareExchange(counter, value + 1, value);
++        if (observed == value) return value + 1;
++        value = observed;
++#else
++        if (__atomic_compare_exchange_n(counter, &value, value + 1, 0,
++                                        __ATOMIC_RELAXED, __ATOMIC_RELAXED))
++            return value + 1;
++#endif
++    }
++    return INT32_MAX;
++}
++#endif

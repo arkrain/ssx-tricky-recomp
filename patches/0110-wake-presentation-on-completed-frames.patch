@@ -1,0 +1,105 @@
+diff --git a/src/video/fb_present.c b/src/video/fb_present.c
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -217,6 +217,7 @@
+ #include <SDL.h>
+ #include "../input/xinput_xbox.h"
+ #include <pthread.h>
++#include <time.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <string.h>
+@@ -225,6 +226,8 @@
+ 
+ extern ptrdiff_t xbox_GetMemoryOffset(void);
+ static pthread_mutex_t fb_lock = PTHREAD_MUTEX_INITIALIZER;
++static pthread_cond_t fb_source_cond;
++static int fb_source_cond_ready;
+ static uint32_t fb_address, fb_stride;
+ static int fb_started;
+ static uint32_t fb_completed[640 * 480], movie_pixels[640 * 480];
+@@ -239,6 +242,7 @@
+     if(pixels)memcpy(movie_pixels,pixels,sizeof movie_pixels);
+     movie_active=pixels!=NULL;
+     ++fb_source_generation;
++    if(fb_source_cond_ready)pthread_cond_signal(&fb_source_cond);
+     pthread_mutex_unlock(&fb_lock);
+ }
+ 
+@@ -263,6 +267,7 @@
+             }
+         }
+         ++fb_source_generation;
++        if(fb_source_cond_ready)pthread_cond_signal(&fb_source_cond);
+     }
+     pthread_mutex_unlock(&fb_lock);
+ }
+@@ -292,11 +297,15 @@
+     uint64_t deadline=SDL_GetPerformanceCounter(), consumed=0;
+     const char *legacy_option=getenv("RECOMP_FB_LEGACY_PACING");
+     int legacy_pacing=legacy_option && !strcmp(legacy_option,"1");
+-    fprintf(stderr,"[FBWIN] pacing: %s\n",legacy_pacing?"legacy post-work delay":"60 Hz deadline");
++    const char *source_option=getenv("RECOMP_FB_SOURCE_PACING");
++    int source_pacing=!legacy_pacing && fb_source_cond_ready && (!source_option || strcmp(source_option,"0"));
++    fprintf(stderr,"[FBWIN] pacing: %s\n",source_pacing?"completed-frame wake":legacy_pacing?"legacy post-work delay":"60 Hz deadline");
+     for (;;) {
+         uint64_t work_start=SDL_GetPerformanceCounter();
++        int redraw=0;
+         SDL_Event event;
+         while (SDL_PollEvent(&event)) {
++            if(event.type==SDL_WINDOWEVENT && (event.window.event==SDL_WINDOWEVENT_EXPOSED || event.window.event==SDL_WINDOWEVENT_SIZE_CHANGED))redraw=1;
+             if (event.type == SDL_QUIT) { quit_requested = 1; goto done; }
+             if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP)
+                 xbox_InputKeyboardEvent(event.key.keysym.scancode,event.type == SDL_KEYDOWN);
+@@ -306,13 +315,16 @@
+         pthread_mutex_lock(&fb_lock);
+         uint32_t address = fb_address, pitch = fb_stride;
+         int movie = movie_active;
++        uint64_t available_generation=fb_source_generation;
++        uint64_t observed_generation=available_generation;
+         pthread_mutex_unlock(&fb_lock);
+         uint64_t end = (uint64_t)address + (uint64_t)pitch * 480;
+         int valid = (address >= 0x1000 && end <= 0x04000000u) ||
+                     (address >= 0x80000000u && end <= 0x84000000ull);
+-        if (movie || (valid && (pitch == 640 * 4 || pitch == 640 * 2))) {
++        if ((!source_pacing || available_generation!=consumed || redraw) && (movie || (valid && (pitch == 640 * 4 || pitch == 640 * 2)))) {
+             pthread_mutex_lock(&fb_lock);
+             uint64_t generation=fb_source_generation;
++            observed_generation=generation;
+             for (unsigned y = 0; y < 480; ++y)
+                 memcpy((uint8_t *)surface->pixels + y * surface->pitch,
+                        (movie_active ? movie_pixels : fb_completed) + y * 640, 2560);
+@@ -330,7 +342,17 @@
+         }
+         uint64_t work_end=SDL_GetPerformanceCounter();
+         fb_render_ticks+=work_end-work_start;
+-        SDL_Delay(legacy_pacing?16:fb_frame_wait_ms(&deadline,work_end,fb_clock_frequency));
++        if(source_pacing) {
++            /* Bounded input polling; new completed frames wake immediately.
++             * Compare under the same lock to avoid losing a producer signal. */
++            struct timespec until;clock_gettime(CLOCK_MONOTONIC,&until);
++            until.tv_nsec+=8000000;
++            if(until.tv_nsec>=1000000000){until.tv_sec++;until.tv_nsec-=1000000000;}
++            pthread_mutex_lock(&fb_lock);
++            if(fb_source_generation==observed_generation)
++                pthread_cond_timedwait(&fb_source_cond,&fb_lock,&until);
++            pthread_mutex_unlock(&fb_lock);
++        } else SDL_Delay(legacy_pacing?16:fb_frame_wait_ms(&deadline,work_end,fb_clock_frequency));
+     }
+ fail:
+     fprintf(stderr, "[FBWIN] SDL display failed: %s\n", SDL_GetError());
+@@ -356,6 +378,14 @@
+     pthread_mutex_lock(&fb_lock);
+     if (!fb_started) {
+         pthread_t thread;
++        if(!fb_source_cond_ready) {
++            pthread_condattr_t attr;
++            if(!pthread_condattr_init(&attr)) {
++                if(!pthread_condattr_setclock(&attr,CLOCK_MONOTONIC) && !pthread_cond_init(&fb_source_cond,&attr))
++                    fb_source_cond_ready=1;
++                pthread_condattr_destroy(&attr);
++            }
++        }
+         if (!pthread_create(&thread, NULL, fb_sdl_thread, NULL)) {
+             fb_started = 1;
+             pthread_detach(thread);

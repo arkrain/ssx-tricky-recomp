@@ -1,0 +1,81 @@
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -1822,8 +1822,15 @@
+             return [f"/* {m}: bad operands */"]
+         dst = _fmt_operand_read(ops[0])
+         cnt = _fmt_operand_read(ops[1])
+-        func = "ROL32" if m == "rol" else "ROR32"
+-        return [_fmt_operand_write(ops[0], f"{func}({dst}, {cnt})")]
++        width = (_operand_width(ops[0]) or 4) * 8
++        func = "RECOMP_ROL" if m == "rol" else "RECOMP_ROR"
++        out = [f"{{ unsigned _rot_count = ({cnt}) & 31u;",
++               _fmt_operand_write(ops[0], f"{func}({dst}, _rot_count, {width})")]
++        if self.needs_cf:
++            bit = "0" if m == "rol" else str(width - 1)
++            out.append(f"if (_rot_count) _cf = (int)((({dst}) >> {bit}) & 1u);")
++        out.append("}")
++        return out
+ 
+     # ── Compare / Test (standalone) ──
+ 
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -689,6 +689,19 @@
+  * Rotation / shift helpers
+  * ================================================================ */
+ 
++static inline uint32_t RECOMP_ROL(uint32_t value, unsigned count, unsigned width) {
++    uint32_t mask = UINT32_MAX >> (32 - width);
++    unsigned n = (count & 31u) % width;
++    value &= mask;
++    return n ? ((value << n) | (value >> (width - n))) & mask : value;
++}
++static inline uint32_t RECOMP_ROR(uint32_t value, unsigned count, unsigned width) {
++    uint32_t mask = UINT32_MAX >> (32 - width);
++    unsigned n = (count & 31u) % width;
++    value &= mask;
++    return n ? ((value >> n) | (value << (width - n))) & mask : value;
++}
++
+ static inline uint32_t ROL32(uint32_t val, int n) {
+     n &= 31;
+     return (val << n) | (val >> (32 - n));
+--- a/tools/recomp/test_rotate_execution.py
++++ b/tools/recomp/test_rotate_execution.py
+@@ -0,0 +1,36 @@
++"""Compare lifted rotates with a bit-at-a-time width/carry reference."""
++import pathlib
++import re
++import subprocess
++import tempfile
++import unittest
++from .disasm import Instruction, Operand
++from .lifter import Lifter
++
++class RotateExecutionTest(unittest.TestCase):
++    def test_width_and_carry(self):
++        header=(pathlib.Path(__file__).resolve().parents[2]/'templates/runtime/recomp_types.h').read_text()
++        helpers='\n'.join(re.search(r'static inline uint32_t '+n+r'\(.*?\n}',header,re.S).group() for n in ('RECOMP_ROL','RECOMP_ROR'))
++        source='#include <stdint.h>\n#include <assert.h>\n'+helpers+'\n#define LO8(v) ((v)&255u)\n#define LO16(v) ((v)&65535u)\n#define SET_LO8(v,x) ((v)=((v)&~255u)|((x)&255u))\n#define SET_LO16(v,x) ((v)=((v)&~65535u)|((x)&65535u))\n'
++        for m in ('rol','ror'):
++            for reg,width in [('al',8),('ax',16),('eax',32)]:
++                ins=Instruction(0,2,m,reg+', cl','');ins.operands=[Operand(type='reg',reg=reg),Operand(type='reg',reg='cl')]
++                lifter=Lifter();lifter.needs_cf=True
++                code='\n'.join(lifter.lift_instruction(ins))
++                source+=f'''static void test_{m}{width}(uint32_t value,unsigned count) {{
++uint32_t eax=value,ecx=count; int _cf=1;
++{code}
++uint32_t mask=UINT32_MAX>>(32-{width}), expect=value&mask; int carry=1;
++for(unsigned i=0;i<(count&31);i++) {{
++'''
++                if m=='rol':source+=f'carry=(expect>>({width}-1))&1; expect=((expect<<1)|carry)&mask;\n'
++                else:source+=f'carry=expect&1; expect=(expect>>1)|((uint32_t)carry<<({width}-1));\n'
++                source+='}\nassert(eax==((value&~mask)|expect)); assert(_cf==carry);\n}\n'
++        source+='int main(void) { for(unsigned c=0;c<256;c++) for(unsigned v=0;v<256;v++) {\n'
++        for m in ('rol','ror'):
++            for w in (8,16,32):source+=f'test_{m}{w}(0xa538f000u|v,c);\n'
++        source+='} return 0;}\n'
++        with tempfile.TemporaryDirectory() as t:
++            p=pathlib.Path(t);(p/'test.c').write_text(source)
++            subprocess.run(['cc',str(p/'test.c'),'-o',str(p/'test')],check=True)
++            subprocess.run([str(p/'test')],check=True)

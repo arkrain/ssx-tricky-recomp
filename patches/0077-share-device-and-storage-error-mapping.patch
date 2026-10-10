@@ -1,0 +1,44 @@
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -2434,19 +2434,7 @@
+  */
+ static void bridge_RtlNtStatusToDosError(void)
+ {
+-    uint32_t status = STACK_ARG(0);
+-
+-    /* Simple mapping of common status codes */
+-    switch (status) {
+-    case 0x00000000: g_eax = 0; break;          /* STATUS_SUCCESS → ERROR_SUCCESS */
+-    case 0xC0000034: g_eax = 2; break;          /* STATUS_OBJECT_NAME_NOT_FOUND → ERROR_FILE_NOT_FOUND */
+-    case 0xC000003A: g_eax = 3; break;          /* STATUS_OBJECT_PATH_NOT_FOUND → ERROR_PATH_NOT_FOUND */
+-    case 0xC0000022: g_eax = 5; break;          /* STATUS_ACCESS_DENIED → ERROR_ACCESS_DENIED */
+-    case 0xC0000008: g_eax = 6; break;          /* STATUS_INVALID_HANDLE → ERROR_INVALID_HANDLE */
+-    case 0xC0000017: g_eax = 8; break;          /* STATUS_NO_MEMORY → ERROR_NOT_ENOUGH_MEMORY */
+-    case 0xC000000D: g_eax = 87; break;         /* STATUS_INVALID_PARAMETER → ERROR_INVALID_PARAMETER */
+-    default:         g_eax = 317; break;         /* ERROR_MR_MID_NOT_FOUND (generic) */
+-    }
++    g_eax=xbox_RtlNtStatusToDosError((NTSTATUS)STACK_ARG(0));
+ }
+ 
+ /* ── File I/O bridge helpers ─────────────────────────────── */
+--- a/src/kernel/kernel_rtl.c
++++ b/src/kernel/kernel_rtl.c
+@@ -546,6 +546,8 @@
+ ULONG __stdcall xbox_RtlNtStatusToDosError(NTSTATUS Status)
+ {
+     switch (Status) {
++        case (NTSTATUS)0xC000007F:              return ERROR_DISK_FULL;
++        case (NTSTATUS)0xC000009D:              return ERROR_DEVICE_NOT_CONNECTED;
+         case STATUS_SUCCESS:                    return ERROR_SUCCESS;
+         case STATUS_INVALID_PARAMETER:          return ERROR_INVALID_PARAMETER;
+         case STATUS_NO_MEMORY:                  return ERROR_NOT_ENOUGH_MEMORY;
+--- a/src/platform/win32_compat.h
++++ b/src/platform/win32_compat.h
+@@ -383,6 +383,7 @@
+ #define ERROR_NOT_SUPPORTED           50u
+ #define ERROR_FILE_EXISTS             80u
+ #define ERROR_INVALID_PARAMETER       87u
++#define ERROR_DISK_FULL                112u
+ #define ERROR_CALL_NOT_IMPLEMENTED    120u
+ #define ERROR_INSUFFICIENT_BUFFER     122u
+ #define ERROR_ALREADY_EXISTS          183u

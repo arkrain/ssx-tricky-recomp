@@ -1,0 +1,42 @@
+diff --git a/src/kernel/nv2a_pb_exec.c b/src/kernel/nv2a_pb_exec.c
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -257,11 +257,9 @@
+     uint32_t   draws, verts, nonzero_draws;
+     float      min_x, max_x, min_y, max_y;
+     uint32_t color_offset, color_base, pitch, format;
+-    /* The surface the last batch actually drew into. A double-buffered title
+-     * has already pointed color_offset at the next buffer and cleared it by
+-     * the time the flip arrives, so dumping the current one dumps the frame
+-     * that has not been drawn yet -- which is how a correctly rendered
+-     * sequence came out as 12 black BMPs. */
++    /* Last geometry target, used by local surface dumps. Presentation uses
++     * the bound target at flip submission: clear-only frames need not have
++     * a geometry draw, and off-screen passes may use a different target. */
+     uint32_t drawn_offset;
+     uint64_t pixels;
+     uint32_t pixel_max;   /* brightest value any pixel write carried */
+@@ -635,8 +633,8 @@
+         s_gpu.color_base = base;
+     }
+ 
+-    /* Preserve the completed contents before this back buffer is reused. */
+-    xbox_FramebufferWindowSet(dma_resolve(s_gpu.color_offset), s_gpu.pitch);
++    /* Clears can also finish cinematic bars within a frame. Publish only
++     * when the guest submits its flip, after all those writes are complete. */
+     uint32_t mask=((param&0x10)?0x00ff0000u:0)|((param&0x20)?0x0000ff00u:0)|
+         ((param&0x40)?0x000000ffu:0)|((param&0x80)?0xff000000u:0);
+     for (y = y0; y < y1; y++) {
+@@ -2440,6 +2438,12 @@
+         return;
+ 
+     case NV097_FLIP_INCREMENT_WRITE:
++        ssx_gl_sync();
++        /* The bound surface is the completed frame here, before the next
++         * target is cleared. Use its own pitch, including clear-only frames;
++         * the last geometry draw may belong to a different render target. */
++        if (!s_skip_frame && s_gpu.color_offset && s_gpu.pitch)
++            xbox_FramebufferWindowSet(dma_resolve(s_gpu.color_offset), s_gpu.pitch);
+         s_gpu.flip_write = s_gpu.flip_modulo
+                          ? (s_gpu.flip_write + 1) % s_gpu.flip_modulo
+                          : s_gpu.flip_write + 1;

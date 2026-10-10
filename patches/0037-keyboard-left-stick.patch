@@ -1,0 +1,32 @@
+--- a/src/input/xinput_device.c
++++ b/src/input/xinput_device.c
+@@ -144,6 +144,10 @@
+     case SDL_SCANCODE_BACKSPACE: bit=XBOX_GAMEPAD_BACK; break;
+     case SDL_SCANCODE_SPACE: bit=0x100; break;
+     case SDL_SCANCODE_ESCAPE: bit=0x200; break;
++    case SDL_SCANCODE_W: bit=0x10000; break;
++    case SDL_SCANCODE_S: bit=0x20000; break;
++    case SDL_SCANCODE_A: bit=0x40000; break;
++    case SDL_SCANCODE_D: bit=0x80000; break;
+     default: return;
+     }
+     int old, next;
+@@ -167,13 +171,17 @@
+         if (elapsed-last_read >= 16) {
+             last_read=elapsed; file_buttons=0;
+             FILE *f=fopen(test_input_file,"r");
+-            if(f) { unsigned mask; if(fscanf(f,"%x",&mask)==1)file_buttons=mask&0x3ff; fclose(f); }
++            if(f) { unsigned mask; if(fscanf(f,"%x",&mask)==1)file_buttons=mask&0xf03ff; fclose(f); }
+         }
+         buttons |= file_buttons;
+     }
+     state->Gamepad.wButtons |= buttons & 0xff;
+     if (buttons & 0x100) state->Gamepad.bAnalogButtons[XBOX_BUTTON_A]=255;
+     if (buttons & 0x200) state->Gamepad.bAnalogButtons[XBOX_BUTTON_B]=255;
++    if(buttons & 0xc0000) state->Gamepad.sThumbLX=
++        ((buttons&0x80000)?32767:0)-((buttons&0x40000)?32767:0);
++    if(buttons & 0x30000) state->Gamepad.sThumbLY=
++        ((buttons&0x10000)?32767:0)-((buttons&0x20000)?32767:0);
+ }
+ 
+ /* Open up to XBOX_MAX_CONTROLLERS attached game controllers. */

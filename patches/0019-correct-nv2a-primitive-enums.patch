@@ -1,0 +1,19 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1211,11 +1211,11 @@
+ }
+ 
+ /* NV097 primitive types that are triangles under some winding. */
+-#define NV_PRIM_TRIANGLES      4
+-#define NV_PRIM_TRIANGLE_STRIP 5
+-#define NV_PRIM_TRIANGLE_FAN   6
+-#define NV_PRIM_QUADS          7
+-#define NV_PRIM_QUAD_STRIP     8
++#define NV_PRIM_TRIANGLES      5
++#define NV_PRIM_TRIANGLE_STRIP 6
++#define NV_PRIM_TRIANGLE_FAN   7
++#define NV_PRIM_QUADS          8
++#define NV_PRIM_QUAD_STRIP     9
+ 
+ /* How many post-draw captures to keep: enough to see whether the geometry
+  * is stable from frame to frame, few enough not to fill a directory. */

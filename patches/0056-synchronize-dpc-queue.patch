@@ -1,0 +1,56 @@
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -1891,6 +1891,12 @@
+ typedef struct { uint32_t dpc, arg1, arg2; } PendingDpc;
+ static PendingDpc g_dpc_queue[XBOX_MAX_PENDING_DPC];
+ static volatile LONG g_dpc_head, g_dpc_tail;
++static volatile LONG g_dpc_lock;
++static void dpc_lock(void)
++{
++    while (InterlockedCompareExchange(&g_dpc_lock, 1, 0)) Sleep(0);
++}
++static void dpc_unlock(void) { InterlockedExchange(&g_dpc_lock, 0); }
+ 
+ static void bridge_KeInsertQueueDpc(void)
+ {
+@@ -1901,9 +1907,14 @@
+ 
+     if (!dpc) { g_eax = 0; return; }
+ 
++    /* USB and GPU interrupts can enqueue concurrently. Publication of the
++     * slot and tail must be one operation or one producer loses the other's
++     * callback, leaving the GPU interrupt source permanently masked. */
++    dpc_lock();
+     tail = g_dpc_tail;
+     next = (tail + 1) % XBOX_MAX_PENDING_DPC;
+     if (next == g_dpc_head) {
++        dpc_unlock();
+         fprintf(stderr, "  [KERNEL] DPC queue full, dropping 0x%08X\n", dpc);
+         fflush(stderr);
+         g_eax = 0;
+@@ -1913,6 +1924,7 @@
+     g_dpc_queue[tail].arg1 = arg1;
+     g_dpc_queue[tail].arg2 = arg2;
+     g_dpc_tail = next;
++    dpc_unlock();
+     g_eax = 1;
+ }
+ 
+@@ -2032,10 +2044,15 @@
+  * stack and TIB that a deferred routine needs. */
+ static void kernel_drain_dpcs(void)
+ {
+-    while (g_dpc_head != g_dpc_tail) {
++    for (;;) {
++        PendingDpc d;
++        dpc_lock();
+         LONG head = g_dpc_head;
+-        PendingDpc d = g_dpc_queue[head];
++        if (head == g_dpc_tail) { dpc_unlock(); break; }
++        d = g_dpc_queue[head];
+         g_dpc_head = (head + 1) % XBOX_MAX_PENDING_DPC;
++        dpc_unlock();
++        /* A callback may enqueue another callback; never hold the lock here. */
+         kernel_run_dpc(d.dpc, d.arg1, d.arg2);
+     }
+ }

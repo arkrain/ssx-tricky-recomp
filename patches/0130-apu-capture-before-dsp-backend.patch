@@ -1,0 +1,41 @@
+--- a/src/apu/apu_dsp.c
++++ b/src/apu/apu_dsp.c
+@@ -126,7 +126,7 @@
+ /* Opt-in raw mixbin capture for diagnosing audio lost before stereo output.
+  * Format: 15,000 blocks of float32 [32 bins][32 samples], 48 kHz (10 seconds).
+  * A request file arms/rearms the capture; normal playback does no file I/O. */
+-static void capture_mixbins(const float bins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
++void mcpx_apu_capture_mixbins(const float bins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+ {
+     static int initialized;
+     static const char *path,*trigger;
+@@ -181,7 +181,6 @@
+     int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
+ 
+     dsp_ack_frame(d);
+-    capture_mixbins(mixbins);
+ 
+     if (d->monitor.point != MCPX_APU_DEBUG_MON_VP) {
+         for (int i = 0; i < NUM_SAMPLES_PER_FRAME; i++) {
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -451,6 +451,7 @@
+     memset(mixbins, 0, sizeof(mixbins));
+ 
+     mcpx_apu_vp_frame(d, mixbins);
++    mcpx_apu_capture_mixbins(mixbins);
+     if(s_dsp_backend)s_dsp_backend->frame(d,mixbins);
+     else mcpx_apu_dsp_frame(d, mixbins);
+     mcpx_apu_monitor_frame(d);
+--- a/src/apu/apu_state.h
++++ b/src/apu/apu_state.h
+@@ -516,6 +516,9 @@
+ void mcpx_apu_vp_frame(MCPXAPUState *d, float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
+ void mcpx_apu_vp_reset(MCPXAPUState *d);
+ 
++/* Optional observation of the VP output, before either DSP backend. */
++void mcpx_apu_capture_mixbins(const float bins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME]);
++
+ /* DSP functions (stubbed) */
+ void mcpx_apu_dsp_init(MCPXAPUState *d);
+ void mcpx_apu_update_dsp_preference(MCPXAPUState *d);

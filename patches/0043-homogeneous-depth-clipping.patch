@@ -1,0 +1,21 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1331,12 +1331,17 @@
+         memcpy(poly[0][v]+4,s_triangle_color[v],32);
+         memcpy(poly[0][v]+12,s_triangle_tex[v],64);
+     }
+-    for(int plane=0;plane<5;plane++) {
++    float clip_far;
++    memcpy(&clip_far,&s_render_reg[0x398/4],4);
++    if(!isfinite(clip_far) || clip_far<=0) clip_far=16777215.0f;
++    for(int plane=0;plane<7;plane++) {
+         int dst=src^1, n=0;
+         for(int i=0;i<count;i++) {
+             float *a=poly[src][i], *b=poly[src][(i+1)%count];
+             float da,db;
+             if(!plane) { da=a[3]-1e-5f; db=b[3]-1e-5f; }
++            else if(plane==5) { da=a[2];db=b[2]; }
++            else if(plane==6) { da=clip_far*a[3]-a[2];db=clip_far*b[3]-b[2]; }
+             else {
+                 int axis=plane<=2?0:1;
+                 float edge=axis?s_gpu.clip_y:s_gpu.clip_x;

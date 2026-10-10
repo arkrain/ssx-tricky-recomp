@@ -1,0 +1,70 @@
+--- a/src/apu/apu_dsp.c
++++ b/src/apu/apu_dsp.c
+@@ -8,9 +8,9 @@
+  * For initial audio, we bypass the DSP entirely:
+  * - VP mixbins are passed directly to the EP output
+  * - GP effects processing is skipped
+- * - The EP just copies mixbin 0/1 (front L/R) to the monitor buffer
+- *
+- * This gives us basic voice playback without effects. The DSP can be
++ * - The EP downmixes the six speaker bins to the stereo monitor buffer
++ *
++ * This preserves speaker-routed voices without effects. The DSP can be
+  * connected later for reverb, EQ, and other processing.
+  *
+  * Copyright (c) 2012 espes
+@@ -156,23 +156,28 @@
+     if(++blocks==15000) {fclose(dump);dump=NULL;}
+ }
+ 
++/* The monitor is stereo even when the guest uses all six speaker bins.
++ * Retain front L/R at unity and fold center/back speakers at -3 dB. LFE is
++ * an auxiliary bass channel and effects-send bins 6..31 are not speakers.
++ * This is a speaker downmix, not emulation of the guest DSP program.
++ * Set RECOMP_APU_STEREO_DOWNMIX=0 only for old-path diagnostic comparisons. */
++static int stereo_downmix_enabled(void)
++{
++    static int enabled=-1;
++    if(enabled<0) {
++        const char *value=getenv("RECOMP_APU_STEREO_DOWNMIX");
++        enabled=!(value && !strcmp(value,"0"));
++    }
++    return enabled;
++}
++
+ void mcpx_apu_dsp_frame(MCPXAPUState *d,
+                          float mixbins[NUM_MIXBINS][NUM_SAMPLES_PER_FRAME])
+ {
+-    /* Bypass DSP: take mixbin 0 (front-left) and mixbin 1 (front-right)
+-     * and write them directly to the monitor frame buffer as the final
+-     * EP output.
+-     *
+-     * The Xbox DirectSound typically routes:
+-     *   Mixbin 0 = Front Left
+-     *   Mixbin 1 = Front Right
+-     *   Mixbin 2 = Center (often unused in stereo)
+-     *   Mixbin 3 = LFE
+-     *   Mixbin 4-5 = Rear L/R
+-     *
+-     * For stereo output, bins 0 and 1 are what we want.
+-     */
+-
++    /* Speaker order: front left, front right, center, LFE, back left,
++     * back right. Preserve the original front-only signal when others are
++     * silent; clamp the combined result at the existing output conversion. */
++    int downmix=stereo_downmix_enabled();
+     int off = (d->ep_frame_div % 8) * NUM_SAMPLES_PER_FRAME;
+ 
+     dsp_ack_frame(d);
+@@ -183,6 +188,11 @@
+             /* Clamp to [-1, 1] range */
+             float left = mixbins[0][i];
+             float right = mixbins[1][i];
++            if(downmix) {
++                const float level=0.7071067811865475f;
++                left += level*(mixbins[2][i]+mixbins[4][i]);
++                right += level*(mixbins[2][i]+mixbins[5][i]);
++            }
+             if (left > 1.0f) left = 1.0f;
+             if (left < -1.0f) left = -1.0f;
+             if (right > 1.0f) right = 1.0f;

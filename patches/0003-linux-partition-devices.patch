@@ -1,0 +1,112 @@
+diff --git a/src/kernel/kernel_file.c b/src/kernel/kernel_file.c
+index c131993..a37ab6f 100644
+--- a/src/kernel/kernel_file.c
++++ b/src/kernel/kernel_file.c
+@@ -27,6 +27,7 @@
+ #include <sys/statvfs.h>
+ #include <dirent.h>
+ #include <fnmatch.h>
++#include <strings.h>
+ #endif
+ 
+ /* Get the ANSI path from OBJECT_ATTRIBUTES (platform-independent). */
+@@ -793,6 +794,20 @@ NTSTATUS __stdcall xbox_NtCreateFile(
+         return STATUS_OBJECT_PATH_NOT_FOUND;
+     }
+ 
++    /* A raw partition opened for volume queries needs a directory handle,
++     * while a byte-oriented open needs the sparse image. Restrict this to
++     * partition devices; ordinary files must still fail directory opens. */
++    const char *prefix = "\\Device\\Harddisk0\\Partition";
++    size_t prefix_len = strlen(prefix);
++    if ((CreateOptions & XBOX_FILE_DIRECTORY_FILE) &&
++        !strncasecmp(xbox_path, prefix, prefix_len)) {
++        const char *tail = xbox_path + prefix_len;
++        if (tail[0] >= '0' && tail[0] <= '5' &&
++            (!tail[1] || ((tail[1] == '\\' || tail[1] == '/') && !tail[2]))) {
++            char *slash = strrchr(host_path, '/');
++            if (slash && slash != host_path) *slash = 0;
++        }
++    }
+     int fd;
+     if (CreateOptions & XBOX_FILE_DIRECTORY_FILE) {
+         if (CreateDisposition == XBOX_FILE_CREATE || CreateDisposition == XBOX_FILE_OPEN_IF)
+diff --git a/src/kernel/kernel_path.c b/src/kernel/kernel_path.c
+index b2a6bf1..5952402 100644
+--- a/src/kernel/kernel_path.c
++++ b/src/kernel/kernel_path.c
+@@ -461,6 +461,7 @@ translate:
+ #include <sys/stat.h>
+ #include <sys/types.h>
+ #include <errno.h>
++#include <fcntl.h>
+ 
+ static char s_game_dir[MAX_PATH];
+ static char s_save_dir[MAX_PATH];
+@@ -495,6 +496,48 @@ static void mkdir_p(const char* path)
+         xbox_log(XBOX_LOG_WARN, XBOX_LOG_PATH, "mkdir %s: %s", tmp, strerror(errno));
+ }
+ 
++/* Raw devices are sparse files, distinct from the mounted directory trees.
++ * Preserve guest-written cache metadata across startup; never truncate it. */
++static void init_partition_images(void)
++{
++    static const uint64_t sectors[] = {
++        0x009C4800, 0x00465400, 0x000FA000,
++        0x00177000, 0x00177000, 0x00177000
++    };
++    static const char *dirs[] = { "TitleData", "UserData", "Cache", "SystemData" };
++    char path[MAX_PATH];
++    mkdir_p(s_save_dir);
++    for (size_t i = 0; i < sizeof(dirs) / sizeof(dirs[0]); ++i) {
++        if (snprintf(path, sizeof(path), "%s/%s", s_save_dir, dirs[i]) < (int)sizeof(path))
++            mkdir_p(path);
++    }
++    for (size_t i = 0; i < sizeof(sectors) / sizeof(sectors[0]); ++i) {
++        if (snprintf(path, sizeof(path), "%s/Partition%zu.img", s_save_dir, i) >= (int)sizeof(path))
++            continue;
++        int fd = open(path, O_RDWR | O_CREAT, 0600);
++        if (fd < 0) {
++            xbox_log(XBOX_LOG_ERROR, XBOX_LOG_PATH, "Cannot open device %s: %s", path, strerror(errno));
++            continue;
++        }
++        struct stat st;
++        off_t size = (off_t)(sectors[i] * 512);
++        if (fstat(fd, &st) == 0 && st.st_size < size && ftruncate(fd, size) != 0)
++            xbox_log(XBOX_LOG_ERROR, XBOX_LOG_PATH, "Cannot size device %s: %s", path, strerror(errno));
++        close(fd);
++    }
++}
++
++static BOOL partition_device_path(const char *path, char *out, DWORD size)
++{
++    int n = match_prefix(path, "\\Device\\Harddisk0\\Partition");
++    if (!n || path[n] < '0' || path[n] > '5') return FALSE;
++    const char *rest = path + n + 1;
++    if (*rest == '\\' || *rest == '/') ++rest;
++    if (*rest) return FALSE;
++    int written = snprintf(out, size, "%s/Partition%c.img", s_save_dir, path[n]);
++    return written >= 0 && (DWORD)written < size;
++}
++
+ void xbox_path_init(const char* game_dir, const char* save_dir)
+ {
+     if (game_dir) {
+@@ -524,6 +567,7 @@ void xbox_path_init(const char* game_dir, const char* save_dir)
+     strip_trailing_slash(s_game_dir);
+     strip_trailing_slash(s_save_dir);
+ 
++    init_partition_images();
+     s_initialized = TRUE;
+     xbox_log(XBOX_LOG_INFO, XBOX_LOG_PATH, "Path init: game=%s, save=%s",
+              s_game_dir, s_save_dir);
+@@ -548,6 +592,9 @@ BOOL xbox_translate_path(const char* xbox_path, xbox_host_char* host_path_buf, D
+             return xbox_translate_path(linked, host_path_buf, buf_size);
+     }
+ 
++    if (partition_device_path(xbox_path, host_path_buf, buf_size))
++        return TRUE;
++
+     for (int i = 0; i < PATH_RULE_COUNT; i++) {
+         skip = match_prefix(xbox_path, s_rules[i].prefix);
+         if (skip) {

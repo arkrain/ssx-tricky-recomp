@@ -1,0 +1,48 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -587,13 +587,14 @@
+     }
+     if(x0>=x1 || y0>=y1)return;
+ 
+-    if ((param & 1) && s_gpu.depth_offset && s_gpu.depth_pitch) {
++    if ((param & 3) && s_gpu.depth_offset && s_gpu.depth_pitch) {
++        uint32_t mask=((param&1)?0xffffff00u:0)|((param&2)?255u:0);
+         uint32_t base = dma_resolve(s_gpu.depth_offset);
+         if (!surface_hits_image(base, y1 * s_gpu.depth_pitch)) {
+             for (y = y0; y < y1; ++y) {
+                 uint32_t *row = (uint32_t *)(mem + base + y * s_gpu.depth_pitch);
+                 for (x = x0; x < x1; ++x)
+-                    row[x] = (row[x] & 255) | (s_gpu.depth_clear & 0xffffff00u);
++                    row[x] = (row[x] & ~mask) | (s_gpu.depth_clear & mask);
+             }
+         }
+     }
+@@ -612,22 +613,26 @@
+ 
+     /* Preserve the completed contents before this back buffer is reused. */
+     xbox_FramebufferWindowSet(dma_resolve(s_gpu.color_offset), s_gpu.pitch);
++    uint32_t mask=((param&0x10)?0x00ff0000u:0)|((param&0x20)?0x0000ff00u:0)|
++        ((param&0x40)?0x000000ffu:0)|((param&0x80)?0xff000000u:0);
+     for (y = y0; y < y1; y++) {
+         uint8_t *row = mem + s_gpu.color_base
+                      + (size_t)y * s_gpu.pitch;
+         if (bpp == 4) {
+             uint32_t *p = (uint32_t *)row;
+             for (x = x0; x < x1; x++)
+-                p[x] = s_gpu.clear_color;
++                p[x] = (p[x]&~mask)|(s_gpu.clear_color&mask);
+         } else if (bpp == 2) {
+             /* The clear value is always given as A8R8G8B8; a 16-bit surface
+              * takes the same colour reduced to 5:6:5. */
+             uint16_t v = (uint16_t)(((s_gpu.clear_color >> 8) & 0xF800)
+                                   | ((s_gpu.clear_color >> 5) & 0x07E0)
+                                   | ((s_gpu.clear_color >> 3) & 0x001F));
++            uint16_t mask16=((param&0x10)?0xf800:0)|((param&0x20)?0x07e0:0)|
++                ((param&0x40)?0x001f:0);
+             uint16_t *p = (uint16_t *)row;
+             for (x = x0; x < x1; x++)
+-                p[x] = v;
++                p[x] = (p[x]&~mask16)|(v&mask16);
+         }
+     }
+     s_gpu.clears++;

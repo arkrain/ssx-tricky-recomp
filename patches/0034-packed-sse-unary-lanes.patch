@@ -1,0 +1,76 @@
+--- a/tools/recomp/lifter.py
++++ b/tools/recomp/lifter.py
+@@ -2822,27 +2822,17 @@
+             if nops >= 2:
+                 return [_sse_write(ops[0], f"1.0f / {_sse_read(ops[1])}") + " /* rcpss */"]
+ 
+-        # ── Packed sqrt / reciprocal / rsqrt ──
+-        # The SSE model here tracks only the low lane as a single float, so
+-        # these compute the low lane like their scalar ...ss forms rather than
+-        # all four. That is the same low-lane approximation the packed
+-        # arithmetic ops (addps/mulps) already use -- but computing the low lane
+-        # is strictly better than the TODO no-op these used to hit, which left
+-        # the destination stale and fed garbage into vector normalisation.
+-        # rsqrtps/sqrtps are the workhorse of 3D vector normalize; some titles
+-        # use them heavily, which is why this surfaced on those binaries.
+-        if m == "sqrtps":
+-            if nops >= 2:
+-                return [_sse_write(ops[0], f"sqrtf({_sse_read(ops[1])})")
+-                        + " /* sqrtps (low lane; 4-lane model TODO) */"]
+-        if m == "rsqrtps":
+-            if nops >= 2:
+-                return [_sse_write(ops[0], f"1.0f / sqrtf({_sse_read(ops[1])})")
+-                        + " /* rsqrtps (low lane; 4-lane model TODO) */"]
+-        if m == "rcpps":
+-            if nops >= 2:
+-                return [_sse_write(ops[0], f"1.0f / {_sse_read(ops[1])}")
+-                        + " /* rcpps (low lane; 4-lane model TODO) */"]
++        # Packed unary operations consume and replace all four lanes. Snapshot
++        # the source before writing, including when source and destination alias.
++        if m in ("sqrtps", "rsqrtps", "rcpps") and nops >= 2:
++            src = _packed_read(ops[1])
++            if src is not None and _is_xmm(ops[0]):
++                expr = {"sqrtps": "sqrtf(_packed_src.f[_lane])",
++                        "rsqrtps": "1.0f / sqrtf(_packed_src.f[_lane])",
++                        "rcpps": "1.0f / _packed_src.f[_lane]"}[m]
++                return [f"{{ RecompXmm _packed_src = {src}; "
++                        f"for (int _lane = 0; _lane < 4; ++_lane) "
++                        f"{ops[0].reg}.f[_lane] = {expr}; }} /* {m} */"]
+ 
+         # ── Packed comparison ──
+         if m in ("cmpneqps", "cmpeqps", "cmpltps", "cmpleps"):
+--- /dev/null
++++ b/tools/recomp/test_packed_unary_execution.py
+@@ -0,0 +1,32 @@
++"""Compile lifted packed instructions and check all four resulting lanes."""
++import pathlib
++import subprocess
++import tempfile
++import unittest
++from .test_lifter_sse import _insn, _xmm, _mem
++from .lifter import Lifter
++
++class PackedUnaryExecutionTest(unittest.TestCase):
++    def test_register_alias_and_memory_sources(self):
++        cases = [('sqrtps', [_xmm('xmm1'), _xmm('xmm0')], '2,3,4,5'),
++                 ('rsqrtps', [_xmm('xmm0'), _xmm('xmm0')], '.5f,1.0f/3,.25f,.2f'),
++                 ('rcpps', [_xmm('xmm1'), _mem('eax')], '.25f,1.0f/9,.0625f,.04f')]
++        for op, operands, expected in cases:
++            lifted = '\n'.join(Lifter().lift_instruction(_insn(op, '', operands)))
++            dst = operands[0].reg
++            source = '''#include <math.h>
++#include <assert.h>
++typedef union { float f[4]; unsigned u[4]; } RecompXmm;
++#define XMM_MEM(addr) (*(RecompXmm *)(addr))
++int main(void) {
++RecompXmm xmm0={{4,9,16,25}}, xmm1={{99,98,97,96}};
++void *eax=&xmm0;
++''' + lifted + f'\nfloat expected[4]={{{expected}}};\n' + f'''
++for(int i=0;i<4;i++) assert(fabsf({dst}.f[i]-expected[i])<1e-6f);
++return 0;
++}}
++'''
++            with self.subTest(op=op), tempfile.TemporaryDirectory() as folder:
++                path=pathlib.Path(folder); (path/'case.c').write_text(source)
++                subprocess.run(['cc',str(path/'case.c'),'-lm','-o',str(path/'case')],check=True)
++                subprocess.run([str(path/'case')],check=True)

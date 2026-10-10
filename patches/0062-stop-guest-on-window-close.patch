@@ -1,0 +1,34 @@
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -260,6 +260,7 @@
+     SDL_Texture *texture = NULL;
+     SDL_Surface *surface = NULL;
+     unsigned frames = 0;
++    int quit_requested = 0;
+     if (SDL_InitSubSystem(SDL_INIT_VIDEO)) goto fail;
+     window = SDL_CreateWindow("SSX Tricky — native framebuffer", SDL_WINDOWPOS_CENTERED,
+                               SDL_WINDOWPOS_CENTERED, 640, 480, SDL_WINDOW_RESIZABLE);
+@@ -275,7 +276,7 @@
+     for (;;) {
+         SDL_Event event;
+         while (SDL_PollEvent(&event)) {
+-            if (event.type == SDL_QUIT) goto done;
++            if (event.type == SDL_QUIT) { quit_requested = 1; goto done; }
+             if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP)
+                 xbox_InputKeyboardEvent(event.key.keysym.scancode,event.type == SDL_KEYDOWN);
+             if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+@@ -310,6 +311,14 @@
+     SDL_DestroyTexture(texture);
+     SDL_DestroyRenderer(renderer);
+     SDL_DestroyWindow(window);
++    /* Closing the host window must also stop the guest and its workers.
++     * SDL translates SIGINT/SIGTERM into this event on POSIX. */
++    if (quit_requested) {
++        /* Guest/GPU workers have no cooperative stop protocol yet. Driver
++         * atexit hooks can otherwise tear down a context still in use. */
++        fflush(NULL);
++        _Exit(EXIT_SUCCESS);
++    }
+     return NULL;
+ }
+ 

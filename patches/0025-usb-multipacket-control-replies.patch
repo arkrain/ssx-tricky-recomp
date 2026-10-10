@@ -1,0 +1,53 @@
+--- a/src/usb/ohci.c
++++ b/src/usb/ohci.c
+@@ -306,6 +306,8 @@
+ 
+ static uint32_t g_setup_pending;      /* wLength of the last SETUP seen */
+ static UsbSetup g_setup;
++static uint8_t g_control_reply[256];
++static int g_control_size, g_control_offset;
+ 
+ /* Every address below came out of guest memory, so none of them are trusted.
+  *
+@@ -372,6 +374,8 @@
+             g_setup.wIndex        = (uint16_t)(p[4] | (p[5] << 8));
+             g_setup.wLength       = (uint16_t)(p[6] | (p[7] << 8));
+             g_setup_pending = 1;
++            g_control_size = -2;
++            g_control_offset = 0;
+             if (s_trace) {
+                 fprintf(stderr, "  [OHCI%d] SETUP %02X %02X value %04X "
+                                 "index %04X len %u\n",
+@@ -385,19 +389,21 @@
+         if (endpoint == 0) {
+             /* Data stage of a control transfer, or its status stage when the
+              * driver asks for nothing. */
+-            uint8_t buf[64];
+             int n;
+ 
+             if (!g_setup_pending)
+                 return TD_CC_NOERROR;
+-            n = usb_gamepad_control(&g_setup, buf, (int)sizeof buf);
++            if (g_control_size == -2)
++                g_control_size = usb_gamepad_control(&g_setup, g_control_reply, sizeof g_control_reply);
++            n = g_control_size < 0 ? -1 : g_control_size - g_control_offset;
+             if (n < 0) {
+                 g_setup_pending = 0;
+                 return TD_CC_STALL;
+             }
+             if (n > len) n = len;
+             if (n > 0 && guest_ptr(cbp, (uint32_t)n))
+-                memcpy(guest_ptr(cbp, (uint32_t)n), buf, (size_t)n);
++                memcpy(guest_ptr(cbp, (uint32_t)n), g_control_reply + g_control_offset, (size_t)n);
++            g_control_offset += n;
+             moved = n;
+             if (s_trace && n > 0) {
+                 fprintf(stderr, "  [OHCI%d] IN ep0 %d bytes\n", hc->index, n);
+@@ -422,6 +428,7 @@
+     /* CBP is zero when everything asked for moved, and otherwise points past
+      * what did. A driver computes the transferred length from it. */
+     wr32(td + 4, (moved >= len) ? 0u : cbp + (uint32_t)moved);
++    if (dp == TD_DP_IN && moved < len && !(info & (1u << 18))) return 9; /* DATAUNDERRUN */
+     return TD_CC_NOERROR;
+ }
+ 

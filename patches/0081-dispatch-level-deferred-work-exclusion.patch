@@ -1,0 +1,151 @@
+--- a/src/kernel/kernel_hal.c
++++ b/src/kernel/kernel_hal.c
+@@ -24,12 +24,56 @@
+  *   APC_LEVEL (1) - APC delivery
+  *   DISPATCH_LEVEL (2) - scheduler/DPC level, no page faults allowed
+  *
+- * On Windows, we simulate IRQL with a thread-local variable. Raising to
+- * DISPATCH_LEVEL doesn't actually prevent preemption, but the tracking
+- * allows code that checks IRQL to function correctly.
++ * Track IRQL per host thread and serialize guest dispatch-level work.
++ * Hardware ISR workers retain a separate scope and interrupt-object lock.
++ * Full priority-based ISR preemption/masking is not modeled.
+  * ============================================================================ */
+ 
+ static XBOX_THREAD_LOCAL KIRQL g_current_irql = PASSIVE_LEVEL;
++static CRITICAL_SECTION dispatch_lock;
++static volatile LONG dispatch_lock_state;
++static XBOX_THREAD_LOCAL int dispatch_owned;
++static XBOX_THREAD_LOCAL unsigned isr_depth;
++static void dispatch_enter(void)
++{
++    if (InterlockedCompareExchange(&dispatch_lock_state, 1, 0) == 0) {
++        InitializeCriticalSection(&dispatch_lock);
++        InterlockedExchange(&dispatch_lock_state, 2);
++    } else {
++        while (InterlockedCompareExchange(&dispatch_lock_state, 2, 2) != 2)
++            Sleep(0);
++    }
++    EnterCriticalSection(&dispatch_lock);
++}
++static void set_irql(KIRQL level)
++{
++    /* The console has one CPU: DPCs cannot execute concurrently with a
++     * thread at DISPATCH_LEVEL. Hardware ISRs can preempt that level and
++     * use their separate interrupt-object locks rather than this gate. */
++    if (!isr_depth && level >= DISPATCH_LEVEL && !dispatch_owned) {
++        dispatch_enter();
++        dispatch_owned = 1;
++    }
++    g_current_irql = level;
++    if (!isr_depth && level < DISPATCH_LEVEL && dispatch_owned) {
++        dispatch_owned = 0;
++        LeaveCriticalSection(&dispatch_lock);
++    }
++}
++KIRQL xbox_GetCurrentIrql(void) { return g_current_irql; }
++KIRQL xbox_EnterIsr(void)
++{
++    KIRQL previous = g_current_irql;
++    ++isr_depth;
++    g_current_irql = DISPATCH_LEVEL + 1;
++    return previous;
++}
++void xbox_LeaveIsr(KIRQL previous)
++{
++    g_current_irql = previous;
++    --isr_depth;
++}
++
+ 
+ /*
+  * KfRaiseIrql - Raises IRQL to the specified level.
+@@ -45,7 +89,7 @@
+             old, NewIrql);
+     }
+ 
+-    g_current_irql = NewIrql;
++    set_irql(NewIrql);
+     return old;
+ }
+ 
+@@ -61,7 +105,7 @@
+             g_current_irql, NewIrql);
+     }
+ 
+-    g_current_irql = NewIrql;
++    set_irql(NewIrql);
+ }
+ 
+ /*
+@@ -69,9 +113,7 @@
+  */
+ KIRQL __stdcall xbox_KeRaiseIrqlToDpcLevel(void)
+ {
+-    KIRQL old = g_current_irql;
+-    g_current_irql = DISPATCH_LEVEL;
+-    return old;
++    return xbox_KfRaiseIrql(DISPATCH_LEVEL);
+ }
+ 
+ /* ============================================================================
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -1814,7 +1814,9 @@
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = context;
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = dpc_va;
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = 0;
++    KIRQL previous_irql = xbox_KeRaiseIrqlToDpcLevel();
+     fn();
++    xbox_KfLowerIrql(previous_irql);
+     return 1;
+ }
+ 
+@@ -1963,7 +1965,9 @@
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = kint;
+     g_esp -= 4; BRIDGE_MEM32(g_esp) = 0;
+     xbox_InterruptEnter(XBOX_TO_NATIVE(kint));
++    KIRQL previous_irql = xbox_EnterIsr();
+     fn();
++    xbox_LeaveIsr(previous_irql);
+     xbox_InterruptLeave(XBOX_TO_NATIVE(kint));
+     return (int)(g_eax & 1u);
+ }
+@@ -6757,11 +6761,10 @@
+ }
+ 
+ /* --- KeGetCurrentIrql (ordinal 103, 0 args = 0 bytes)
+- * Stack-based with 0 args (not the Kf* fastcall form). IRQL is unmounted, so
+- * report PASSIVE_LEVEL. */
++ * Stack-based with 0 args (not the Kf* fastcall form). */
+ static void bridge_KeGetCurrentIrql(void)
+ {
+-    g_eax = 0;  /* PASSIVE_LEVEL */
++    g_eax = xbox_GetCurrentIrql();
+ }
+ 
+ /* --- KeGetCurrentThread (ordinal 104, 0 args = 0 bytes) --- */
+--- a/src/kernel/kernel.h
++++ b/src/kernel/kernel.h
+@@ -768,6 +768,9 @@
+ VOID    __stdcall xbox_HalInitiateShutdown(void);
+ BOOLEAN __stdcall xbox_HalIsResetOrShutdownPending(void);
+ 
++KIRQL xbox_GetCurrentIrql(void);
++KIRQL xbox_EnterIsr(void);
++void xbox_LeaveIsr(KIRQL previous);
+ KIRQL   __fastcall xbox_KfRaiseIrql(KIRQL NewIrql);
+ VOID    __fastcall xbox_KfLowerIrql(KIRQL NewIrql);
+ KIRQL   __stdcall xbox_KeRaiseIrqlToDpcLevel(void);
+--- a/src/usb/ohci.c
++++ b/src/usb/ohci.c
+@@ -551,7 +551,9 @@
+     g_esp -= 4; *(uint32_t *)(mem + g_esp) = 0xDEADBEEFu;  /* return address */
+ 
+     xbox_InterruptEnter(mem + kinterrupt);
++    KIRQL previous_irql = xbox_EnterIsr();
+     fn();
++    xbox_LeaveIsr(previous_irql);
+     xbox_InterruptLeave(mem + kinterrupt);
+ 
+     xbox_worker_stack_free(slot);

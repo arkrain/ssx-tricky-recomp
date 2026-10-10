@@ -1,0 +1,66 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -663,7 +663,7 @@
+     /* Progress markers, interleaved with everything else in the log. The
+      * summary says drawing stopped; only a marker next to the surrounding
+      * activity says what the title was doing when it stopped. */
+-    if ((s_gpu.clears % 100) == 0)
++    if (pb_verbose() && (s_gpu.clears % 100) == 0)
+         fprintf(stderr, "  [GPU] clear #%u\n", s_gpu.clears);
+     /* Distinct clear colours actually used. "Cleared to black" and "the clear
+      * never ran" look identical in the framebuffer, and only one of them is a
+@@ -1875,7 +1875,7 @@
+         s_geometry_token=0;s_gl_count=0;
+         goto retry_geometry_on_cpu;
+     }
+-    if (s_gpu.tris_drawn && (s_gpu.tris_drawn % 500) == 0)
++    if (pb_verbose() && s_gpu.tris_drawn && (s_gpu.tris_drawn % 500) == 0)
+         fprintf(stderr, "  [GPU] %u triangles rasterised\n", s_gpu.tris_drawn);
+ 
+     /* Capture the surface while the geometry is still on it.
+@@ -1903,7 +1903,7 @@
+     if (!s_gpu.prim || !s_gpu.idx_count)
+         return;
+     s_gpu.draws++;
+-    if ((s_gpu.draws % 200) == 0)
++    if (pb_verbose() && (s_gpu.draws % 200) == 0)
+         fprintf(stderr, "  [GPU] draw #%u\n", s_gpu.draws);
+     s_gpu.verts += s_gpu.idx_count;
+ 
+--- a/src/kernel/xbox_memory_layout.c
++++ b/src/kernel/xbox_memory_layout.c
+@@ -1498,11 +1498,11 @@
+             MEM_RESERVE | MEM_COMMIT,
+             PAGE_READWRITE
+         );
+-        /* The pushbuffer survey rides on the same poll, so either
+-         * variable arms it. */
++        /* Execution uses the same poll but does not require diagnostics.
++         * Keep periodic surveys/checksums opt-in during normal play. */
+         s_nv2a_trace = getenv("RECOMP_NV2A_TRACE") != NULL
+                     || getenv("RECOMP_PB_SCAN") != NULL
+-                    || getenv("RECOMP_PB_EXEC") != NULL;
++                    || getenv("RECOMP_PB_EXEC_VERBOSE") != NULL;
+         if (g_nv2a_memory) {
+             fprintf(stderr, "  NV2A register aperture: %u MB at Xbox VA "
+                     "0x%08X (zeroed, no register semantics)\n",
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -3029,7 +3029,7 @@
+     /* What a read actually delivered. A decoder that rejects its input cannot
+      * say whether the bytes were wrong or the read was, and the two look
+      * identical from inside the title -- the first bytes settle it. */
+-    {
++    if (KERNEL_LOG_ON()) {
+         const uint8_t *p = (const uint8_t *)XBOX_TO_NATIVE(buffer_va);
+         uint32_t got = (uint32_t)ios.Information;
+         /* The offset matters as much as the length. A title streaming a pack
+@@ -8763,7 +8763,7 @@
+         fflush(stderr);
+     }
+ 
+-    {
++    if (KERNEL_LOG_ON()) {
+         static DWORD last_summary_tick = 0;
+         DWORD now = GetTickCount();
+         if (last_summary_tick == 0) last_summary_tick = now;

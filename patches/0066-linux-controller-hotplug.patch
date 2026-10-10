@@ -1,0 +1,131 @@
+--- a/src/input/xinput_device.c
++++ b/src/input/xinput_device.c
+@@ -120,10 +120,13 @@
+ 
+ #include <SDL.h>
+ #include <stdlib.h>
++#include <pthread.h>
+ 
+ static SDL_GameController *g_pads[XBOX_MAX_CONTROLLERS];
+ static BOOL  g_controller_connected[XBOX_MAX_CONTROLLERS];
+ static DWORD g_packet[XBOX_MAX_CONTROLLERS];
++static pthread_mutex_t controller_lock = PTHREAD_MUTEX_INITIALIZER;
++static Uint32 controller_scan_ticks;
+ 
+ /* The framebuffer event thread owns SDL events; USB reads an atomic snapshot. */
+ static SDL_atomic_t keyboard_buttons;
+@@ -203,15 +206,34 @@
+ /* Open up to XBOX_MAX_CONTROLLERS attached game controllers. */
+ static void open_controllers(void)
+ {
+-    int slot = 0;
+-    for (int i = 0; i < SDL_NumJoysticks() && slot < XBOX_MAX_CONTROLLERS; i++) {
+-        if (!SDL_IsGameController(i))
+-            continue;
+-        if (!g_pads[slot]) {
+-            g_pads[slot] = SDL_GameControllerOpen(i);
+-            g_controller_connected[slot] = (g_pads[slot] != NULL);
++    for (int slot=0;slot<XBOX_MAX_CONTROLLERS;slot++) {
++        if (g_pads[slot] && !SDL_GameControllerGetAttached(g_pads[slot])) {
++            SDL_GameControllerClose(g_pads[slot]);g_pads[slot]=NULL;
++            g_controller_connected[slot]=FALSE;
+         }
+-        slot++;
++    }
++    for (int i=0;i<SDL_NumJoysticks();i++) {
++        if (!SDL_IsGameController(i)) continue;
++        SDL_JoystickID id=SDL_JoystickGetDeviceInstanceID(i);
++        int free_slot=-1, known=0;
++        for (int slot=0;slot<XBOX_MAX_CONTROLLERS;slot++) {
++            if (!g_pads[slot]) { if(free_slot<0)free_slot=slot; }
++            else if (SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(g_pads[slot]))==id) known=1;
++        }
++        if (!known && free_slot>=0) {
++            g_pads[free_slot]=SDL_GameControllerOpen(i);
++            g_controller_connected[free_slot]=g_pads[free_slot]!=NULL;
++        }
++    }
++    controller_scan_ticks=SDL_GetTicks();
++}
++
++static void refresh_controllers(void)
++{
++    if (SDL_WasInit(SDL_INIT_GAMECONTROLLER) &&
++        (Uint32)(SDL_GetTicks()-controller_scan_ticks)>=250) {
++        SDL_GameControllerUpdate();
++        open_controllers();
+     }
+ }
+ 
+@@ -225,7 +247,9 @@
+     test_start_ms=test ? (uint32_t)strtoul(test,NULL,10) : 0;
+     const char *mask=getenv("RECOMP_TEST_BUTTONS");
+     test_buttons=mask ? (unsigned)strtoul(mask,NULL,0) : XBOX_GAMEPAD_START;
++    pthread_mutex_lock(&controller_lock);
+     open_controllers();
++    pthread_mutex_unlock(&controller_lock);
+ }
+ 
+ DWORD xbox_InputGetState(DWORD dwPort, XBOX_INPUT_STATE *pState)
+@@ -233,9 +257,12 @@
+     if (dwPort >= XBOX_MAX_CONTROLLERS || !pState)
+         return ERROR_DEVICE_NOT_CONNECTED;
+ 
++    pthread_mutex_lock(&controller_lock);
++    refresh_controllers();
+     SDL_GameController *c = g_pads[dwPort];
+     if (!c || !SDL_GameControllerGetAttached(c)) {
+         g_controller_connected[dwPort] = FALSE;
++        pthread_mutex_unlock(&controller_lock);
+         if (dwPort != 0) return ERROR_DEVICE_NOT_CONNECTED;
+         memset(pState,0,sizeof *pState);
+         pState->dwPacketNumber=++g_packet[dwPort];
+@@ -288,6 +315,7 @@
+     pState->Gamepad.sThumbRY =
+         (SHORT)(-1 - SDL_GameControllerGetAxis(c, SDL_CONTROLLER_AXIS_RIGHTY));
+ 
++    pthread_mutex_unlock(&controller_lock);
+     if (dwPort == 0) keyboard_state(pState);
+     return ERROR_SUCCESS;
+ }
+@@ -297,20 +325,25 @@
+     if (dwPort >= XBOX_MAX_CONTROLLERS || !pVibration)
+         return ERROR_DEVICE_NOT_CONNECTED;
+ 
++    pthread_mutex_lock(&controller_lock);
+     SDL_GameController *c = g_pads[dwPort];
+-    if (!c) return ERROR_DEVICE_NOT_CONNECTED;
++    if (!c) { pthread_mutex_unlock(&controller_lock); return ERROR_DEVICE_NOT_CONNECTED; }
+ 
+     /* SDL rumble needs a duration; refresh for ~1s on each call (the game
+      * polls vibration continuously). */
+     SDL_GameControllerRumble(c, pVibration->wLeftMotorSpeed,
+                              pVibration->wRightMotorSpeed, 1000);
++    pthread_mutex_unlock(&controller_lock);
+     return ERROR_SUCCESS;
+ }
+ 
+ BOOL xbox_InputIsConnected(DWORD dwPort)
+ {
+     if (dwPort >= XBOX_MAX_CONTROLLERS) return FALSE;
+-    return g_controller_connected[dwPort];
++    pthread_mutex_lock(&controller_lock);
++    BOOL connected=g_controller_connected[dwPort];
++    pthread_mutex_unlock(&controller_lock);
++    return connected;
+ }
+ 
+ DWORD xbox_InputGetCapabilities(DWORD dwPort, DWORD dwFlags, XBOX_INPUT_CAPABILITIES *pCaps)
+@@ -318,8 +351,10 @@
+     (void)dwFlags;
+     if (dwPort >= XBOX_MAX_CONTROLLERS || !pCaps)
+         return ERROR_DEVICE_NOT_CONNECTED;
+-    if (!g_pads[dwPort])
+-        return ERROR_DEVICE_NOT_CONNECTED;
++    pthread_mutex_lock(&controller_lock);
++    int connected=g_pads[dwPort]!=NULL;
++    pthread_mutex_unlock(&controller_lock);
++    if (!connected) return ERROR_DEVICE_NOT_CONNECTED;
+ 
+     memset(pCaps, 0, sizeof(XBOX_INPUT_CAPABILITIES));
+     pCaps->Type    = 1;   /* XINPUT_DEVTYPE_GAMEPAD */

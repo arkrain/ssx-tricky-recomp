@@ -1,0 +1,101 @@
+--- a/src/apu/apu_shim.h
++++ b/src/apu/apu_shim.h
+@@ -96,32 +96,48 @@
+ 
+ extern uint8_t *g_apu_ram_ptr; /* Set at init to point at Xbox 64MB RAM */
+ 
++/* MmGetPhysicalAddress assigns ordinary guest RAM a disjoint bus window.
++ * Preserve that window instead of wrapping it into unrelated contiguous RAM. */
++extern uint8_t *g_apu_low_ram_ptr;
++extern size_t g_apu_low_ram_size;
++static inline uint8_t *apu_phys_ptr(hwaddr addr, size_t size) {
++    if (addr >= 0x40000000ull && addr < 0x80000000ull) {
++        size_t offset = (size_t)(addr - 0x40000000ull);
++        assert(g_apu_low_ram_ptr && offset <= g_apu_low_ram_size &&
++               size <= g_apu_low_ram_size - offset);
++        return g_apu_low_ram_ptr + offset;
++    }
++    size_t offset = (size_t)(addr & 0x03ffffffu);
++    assert(g_apu_ram_ptr && size <= 0x04000000u - offset);
++    return g_apu_ram_ptr + offset;
++}
++
+ /* Little-endian physical memory reads */
+ static inline uint32_t ldl_le_phys(void *as, hwaddr addr) {
+     (void)as;
+-    return *(uint32_t *)(g_apu_ram_ptr + (addr & 0x03FFFFFF));
++    uint32_t value; memcpy(&value, apu_phys_ptr(addr, 4), sizeof(value)); return value;
+ }
+ static inline uint16_t lduw_le_phys(void *as, hwaddr addr) {
+     (void)as;
+-    return *(uint16_t *)(g_apu_ram_ptr + (addr & 0x03FFFFFF));
++    uint16_t value; memcpy(&value, apu_phys_ptr(addr, 2), sizeof(value)); return value;
+ }
+ static inline uint8_t ldub_phys(void *as, hwaddr addr) {
+     (void)as;
+-    return *(uint8_t *)(g_apu_ram_ptr + (addr & 0x03FFFFFF));
++    uint8_t value; memcpy(&value, apu_phys_ptr(addr, 1), sizeof(value)); return value;
+ }
+ 
+ /* Little-endian physical memory writes */
+ static inline void stl_le_phys(void *as, hwaddr addr, uint32_t val) {
+     (void)as;
+-    *(uint32_t *)(g_apu_ram_ptr + (addr & 0x03FFFFFF)) = val;
++    memcpy(apu_phys_ptr(addr, 4), &val, sizeof(val));
+ }
+ static inline void stw_le_phys(void *as, hwaddr addr, uint16_t val) {
+     (void)as;
+-    *(uint16_t *)(g_apu_ram_ptr + (addr & 0x03FFFFFF)) = val;
++    memcpy(apu_phys_ptr(addr, 2), &val, sizeof(val));
+ }
+ static inline void stb_phys(void *as, hwaddr addr, uint8_t val) {
+     (void)as;
+-    *(uint8_t *)(g_apu_ram_ptr + (addr & 0x03FFFFFF)) = val;
++    memcpy(apu_phys_ptr(addr, 1), &val, sizeof(val));
+ }
+ 
+ /* Stub address space - just passed to ldl_le_phys etc. (ignored) */
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -29,6 +29,11 @@
+  * ============================================================ */
+ 
+ uint8_t *g_apu_ram_ptr = NULL;
++uint8_t *g_apu_low_ram_ptr;
++size_t g_apu_low_ram_size;
++void mcpx_apu_set_low_ram(uint8_t *base, size_t size) {
++    g_apu_low_ram_ptr=base; g_apu_low_ram_size=size;
++}
+ 
+ MCPXAPUState *g_state = NULL;
+ 
+--- a/src/apu/apu_vp.c
++++ b/src/apu/apu_vp.c
+@@ -843,7 +843,7 @@
+                 uint32_t linear_addr = block_index * (uint32_t)block_size;
+                 if (stream) {
+                     hwaddr addr = segment_offset + linear_addr;
+-                    memcpy(adpcm_block, &d->ram_ptr[addr & 0x03FFFFFF],
++                    memcpy(adpcm_block, apu_phys_ptr(addr, block_size),
+                            block_size);
+                 } else {
+                     linear_addr += ba;
+--- a/src/apu/apu.h
++++ b/src/apu/apu.h
+@@ -6,12 +6,16 @@
+ #pragma once
+ 
+ #include <stdint.h>
++#include <stddef.h>
+ 
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+ 
+ typedef struct MCPXAPUState MCPXAPUState;
++
++/* Configure the runtime's ordinary-RAM bus window before initialization. */
++void mcpx_apu_set_low_ram(uint8_t *base, size_t size);
+ 
+ /* Initialize the APU emulation.
+  * ram_ptr: pointer to the base of Xbox physical RAM (64MB).

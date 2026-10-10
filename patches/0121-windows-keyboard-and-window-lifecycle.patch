@@ -1,0 +1,232 @@
+--- a/src/input/xinput_device.c
++++ b/src/input/xinput_device.c
+@@ -12,6 +12,7 @@
+ 
+ #include "xinput_xbox.h"
+ #include <string.h>
++#include <stdlib.h>
+ 
+ /* ======================================================================== */
+ #if defined(_WIN32)
+@@ -23,13 +24,56 @@
+ 
+ static BOOL  g_controller_connected[XBOX_MAX_CONTROLLERS] = { FALSE };
+ static DWORD g_last_packet[XBOX_MAX_CONTROLLERS] = { 0 };
++static volatile LONG g_keyboard_buttons, g_keyboard_packet;
++static BOOL g_keyboard_enabled;
++
++void xbox_InputKeyboardEvent(int key, int pressed)
++{
++    LONG bit, old, next;
++    switch (key) {
++    case -1: bit = 0; break;
++    case VK_UP: bit=1; break; case VK_DOWN: bit=2; break;
++    case VK_LEFT: bit=4; break; case VK_RIGHT: bit=8; break;
++    case VK_RETURN: bit=0x10; break; case VK_BACK: bit=0x20; break;
++    case VK_LCONTROL: bit=0x40; break; case VK_RCONTROL: bit=0x80; break;
++    case VK_SPACE: bit=0x100; break; case VK_ESCAPE: bit=0x200; break;
++    case VK_SHIFT: case VK_LSHIFT: case VK_RSHIFT: bit=0x400; break;
++    case 'R': bit=0x800; break; case 'C': bit=0x1000; break;
++    case 'V': bit=0x2000; break; case 'Q': bit=0x4000; break;
++    case 'E': bit=0x8000; break; case 'W': bit=0x10000; break;
++    case 'S': bit=0x20000; break; case 'A': bit=0x40000; break;
++    case 'D': bit=0x80000; break; case 'I': bit=0x100000; break;
++    case 'K': bit=0x200000; break; case 'J': bit=0x400000; break;
++    case 'L': bit=0x800000; break; default: return;
++    }
++    do {
++        old=InterlockedCompareExchange(&g_keyboard_buttons,0,0);
++        next=key == -1 ? 0 : (pressed ? old|bit : old&~bit);
++    } while (InterlockedCompareExchange(&g_keyboard_buttons,next,old)!=old);
++    if (next!=old) InterlockedIncrement(&g_keyboard_packet);
++}
++
++static void merge_keyboard(XBOX_INPUT_STATE *state)
++{
++    unsigned keys=(unsigned)InterlockedCompareExchange(&g_keyboard_buttons,0,0);
++    static const unsigned analog[8]={0x100,0x200,0x400,0x800,0x2000,0x1000,0x4000,0x8000};
++    state->dwPacketNumber+=(DWORD)InterlockedCompareExchange(&g_keyboard_packet,0,0);
++    state->Gamepad.wButtons|=(WORD)(keys&0xff);
++    for (unsigned i=0;i<8;i++) if(keys&analog[i]) state->Gamepad.bAnalogButtons[i]=255;
++    if(keys&0x30000) state->Gamepad.sThumbLY=(SHORT)(((keys&0x10000)!=0)*32767-((keys&0x20000)!=0)*32767);
++    if(keys&0xc0000) state->Gamepad.sThumbLX=(SHORT)(((keys&0x80000)!=0)*32767-((keys&0x40000)!=0)*32767);
++    if(keys&0x300000) state->Gamepad.sThumbRY=(SHORT)(((keys&0x100000)!=0)*32767-((keys&0x200000)!=0)*32767);
++    if(keys&0xc00000) state->Gamepad.sThumbRX=(SHORT)(((keys&0x800000)!=0)*32767-((keys&0x400000)!=0)*32767);
++}
+ 
+ void xbox_InputInit(void)
+ {
++    g_keyboard_enabled=getenv("RECOMP_FB_WINDOW")!=NULL;
++    xbox_InputKeyboardEvent(-1,0);
+     for (DWORD i = 0; i < XBOX_MAX_CONTROLLERS; i++) {
+         XINPUT_STATE state;
+         DWORD result = XInputGetState(i, &state);
+-        g_controller_connected[i] = (result == ERROR_SUCCESS);
++        g_controller_connected[i] = (result == ERROR_SUCCESS) || (i==0 && g_keyboard_enabled);
+     }
+ }
+ 
+@@ -42,10 +86,11 @@
+         return ERROR_DEVICE_NOT_CONNECTED;
+ 
+     result = XInputGetState(dwPort, &xi_state);
+-    if (result != ERROR_SUCCESS) {
++    if (result != ERROR_SUCCESS && !(dwPort==0 && g_keyboard_enabled)) {
+         g_controller_connected[dwPort] = FALSE;
+         return result;
+     }
++    if (result != ERROR_SUCCESS) memset(&xi_state,0,sizeof(xi_state));
+ 
+     g_controller_connected[dwPort] = TRUE;
+     g_last_packet[dwPort] = xi_state.dwPacketNumber;
+@@ -73,6 +118,7 @@
+     pState->Gamepad.sThumbLY = xi_state.Gamepad.sThumbLY;
+     pState->Gamepad.sThumbRX = xi_state.Gamepad.sThumbRX;
+     pState->Gamepad.sThumbRY = xi_state.Gamepad.sThumbRY;
++    if (dwPort==0 && g_keyboard_enabled) merge_keyboard(pState);
+ 
+     return ERROR_SUCCESS;
+ }
+@@ -92,6 +138,9 @@
+ BOOL xbox_InputIsConnected(DWORD dwPort)
+ {
+     if (dwPort >= XBOX_MAX_CONTROLLERS) return FALSE;
++    XINPUT_STATE state;
++    g_controller_connected[dwPort]=(XInputGetState(dwPort,&state)==ERROR_SUCCESS)
++        || (dwPort==0 && g_keyboard_enabled);
+     return g_controller_connected[dwPort];
+ }
+ 
+@@ -103,8 +152,14 @@
+     if (dwPort >= XBOX_MAX_CONTROLLERS || !pCaps)
+         return ERROR_DEVICE_NOT_CONNECTED;
+ 
++    if (dwPort>=XBOX_MAX_CONTROLLERS || !pCaps) return ERROR_DEVICE_NOT_CONNECTED;
+     result = XInputGetCapabilities(dwPort, dwFlags, &xi_caps);
+-    if (result != ERROR_SUCCESS) return result;
++    if (result != ERROR_SUCCESS) {
++        if (!(dwPort==0 && g_keyboard_enabled)) return result;
++        memset(&xi_caps,0,sizeof(xi_caps));
++        xi_caps.Type=XINPUT_DEVTYPE_GAMEPAD;
++        xi_caps.SubType=XINPUT_DEVSUBTYPE_GAMEPAD;
++    }
+ 
+     memset(pCaps, 0, sizeof(XBOX_INPUT_CAPABILITIES));
+     pCaps->Type = xi_caps.Type;
+--- a/src/input/xinput_xbox.h
++++ b/src/input/xinput_xbox.h
+@@ -109,10 +109,8 @@
+  */
+ DWORD xbox_InputGetCapabilities(DWORD dwPort, DWORD dwFlags, XBOX_INPUT_CAPABILITIES *pCaps);
+ 
+-#if !defined(_WIN32)
+-/* SDL scancode; -1 releases all keys on focus loss. */
++/* Windows virtual key or SDL scancode; -1 releases all keys on focus loss. */
+ void xbox_InputKeyboardEvent(int scancode, int pressed);
+-#endif
+ 
+ #ifdef __cplusplus
+ }
+--- a/src/video/CMakeLists.txt
++++ b/src/video/CMakeLists.txt
+@@ -9,10 +9,7 @@
+     ${CMAKE_CURRENT_SOURCE_DIR}/..
+ )
+ target_link_libraries(xbox_video PUBLIC xbox_d3d8)
++target_link_libraries(xbox_video PUBLIC xbox_input)
+ if(WIN32)
+     target_link_libraries(xbox_video PUBLIC mfplat mfreadwrite mfuuid mf ole32)
+ endif()
+-
+-if(NOT WIN32)
+-    target_link_libraries(xbox_video PUBLIC xbox_input)
+-endif()
+--- a/src/video/fb_present.c
++++ b/src/video/fb_present.c
+@@ -21,6 +21,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include "../input/xinput_xbox.h"
+ 
+ extern ptrdiff_t xbox_GetMemoryOffset(void);
+ 
+@@ -43,7 +44,15 @@
+ 
+ static LRESULT CALLBACK fb_wndproc(HWND h, UINT m, WPARAM w, LPARAM l)
+ {
++    if (m==WM_KEYDOWN || m==WM_KEYUP) {
++        int key=(int)w;
++        if(key==VK_CONTROL) key=(l&(1L<<24)) ? VK_RCONTROL : VK_LCONTROL;
++        xbox_InputKeyboardEvent(key,m==WM_KEYDOWN);
++        return 0;
++    }
++    if (m==WM_KILLFOCUS) xbox_InputKeyboardEvent(-1,0);
+     if (m == WM_CLOSE || m == WM_DESTROY) {
++        xbox_InputKeyboardEvent(-1,0);
+         InterlockedExchange(&s_fb_running, 0);
+         return 0;
+     }
+@@ -149,7 +158,9 @@
+                            NULL, NULL, GetModuleHandleA(NULL), NULL);
+     if (!hwnd) {
+         InterlockedExchange(&s_fb_running, 0);
+-        return 0;
++        fprintf(stderr,"[FBWIN] window creation failed: %lu\n",GetLastError());
++        fflush(NULL);
++        ExitProcess(EXIT_FAILURE);
+     }
+     hdc = GetDC(hwnd);
+ 
+@@ -162,6 +173,11 @@
+     bi.bmiHeader.biCompression = BI_RGB;
+ 
+     s_rgb = (uint32_t *)calloc((size_t)s_fb_width * s_fb_height, 4);
++    if(!s_rgb) {
++        fprintf(stderr,"[FBWIN] framebuffer allocation failed\n");
++        fflush(NULL);
++        ExitProcess(EXIT_FAILURE);
++    }
+ 
+     fprintf(stderr, "  [FBWIN] framebuffer window open (%ux%u)\n",
+             s_fb_width, s_fb_height);
+@@ -184,9 +200,13 @@
+             /* One dump, a few seconds in, so the title has had time to render
+              * something rather than catching the first blank frame. */
+             const char *dump = getenv("RECOMP_FB_DUMP");
+-            static int frames;
+-            if (dump && ++frames == 600)
++            const char *capture = getenv("RECOMP_FB_CAPTURE");
++            static uint64_t frames;
++            ++frames;
++            if (dump && frames == 600)
+                 xbox_FramebufferDumpBmp(dump);
++            if (capture && frames % 120 == 0)
++                xbox_FramebufferDumpBmp(capture);
+         }
+         Sleep(16);
+     }
+@@ -195,6 +215,9 @@
+     DestroyWindow(hwnd);
+     free(s_rgb);
+     s_rgb = NULL;
++    /* As on POSIX, closing the display must terminate guest workers too. */
++    fflush(NULL);
++    ExitProcess(EXIT_SUCCESS);
+     return 0;
+ }
+ 
+@@ -209,8 +232,12 @@
+     th = CreateThread(NULL, 0, fb_thread, NULL, 0, NULL);
+     if (th)
+         CloseHandle(th);
+-    else
++    else {
+         InterlockedExchange(&s_fb_running, 0);
++        fprintf(stderr,"[FBWIN] display thread creation failed: %lu\n",GetLastError());
++        fflush(NULL);
++        ExitProcess(EXIT_FAILURE);
++    }
+ }
+ 
+ #else

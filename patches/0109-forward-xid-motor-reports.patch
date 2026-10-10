@@ -1,0 +1,95 @@
+diff --git a/src/usb/ohci.c b/src/usb/ohci.c
+--- a/src/usb/ohci.c
++++ b/src/usb/ohci.c
+@@ -437,7 +437,7 @@
+                 fprintf(stderr, "  [OHCI%d] IN ep0 %d bytes\n", hc->index, n);
+                 fflush(stderr);
+             }
+-        } else {
++        } else if (endpoint == 1) {
+             /* The pad's report, on its interrupt endpoint. */
+             uint8_t rep[32];
+             int n = usb_gamepad_report(pad, rep, (int)sizeof rep);
+@@ -445,13 +445,39 @@
+             if (n > 0 && guest_ptr(cbp, (uint32_t)n))
+                 memcpy(guest_ptr(cbp, (uint32_t)n), rep, (size_t)n);
+             moved = n;
+-        }
+-    } else {
+-        /* OUT: the status stage of an IN control transfer, or rumble. Both
+-         * are accepted and discarded. */
+-        moved = len;
+-        pad->setup_pending = 0;
+-    }
++        } else return TD_CC_STALL;
++    } else if (dp == TD_DP_OUT) {
++        if (endpoint == 2) {
++            /* Interrupt output is a complete XID report. */
++            if (len != 6 || usb_gamepad_output(pad, guest_ptr(cbp, 6), len) < 0)
++                return TD_CC_STALL;
++            moved = len;
++        } else if (endpoint == 0 && pad->setup_pending) {
++            if (pad->setup.bmRequestType & 0x80) {
++                if (len) return TD_CC_STALL;
++                pad->setup_pending = 0; /* status of an IN request */
++            } else {
++                /* SET_REPORT(Output), interface zero. Retain partial data
++                 * until the entire report arrives; never read beyond a TD. */
++                if (pad->setup.bmRequestType != 0x21 || pad->setup.bRequest != 9 ||
++                    pad->setup.wValue != 0x0200 || pad->setup.wIndex != 0 ||
++                    pad->setup.wLength != 6 || pad->control_size != -2 ||
++                    len <= 0 || len > 6 - pad->control_offset)
++                    return TD_CC_STALL;
++                const uint8_t *data = guest_ptr(cbp, (uint32_t)len);
++                if (!data) return TD_CC_STALL;
++                memcpy(pad->control_reply + pad->control_offset, data, (size_t)len);
++                pad->control_offset += len;
++                moved = len;
++                if (pad->control_offset == 6) {
++                    if (usb_gamepad_output(pad, pad->control_reply, 6) < 0)
++                        return TD_CC_STALL;
++                    pad->control_size = 0; /* next IN is status, not a new request */
++                    pad->control_offset = 0;
++                }
++            }
++        } else return TD_CC_STALL;
++    } else return TD_CC_STALL;
+ 
+     /* CBP is zero when everything asked for moved, and otherwise points past
+      * what did. A driver computes the transferred length from it. */
+diff --git a/src/usb/usb_gamepad.c b/src/usb/usb_gamepad.c
+--- a/src/usb/usb_gamepad.c
++++ b/src/usb/usb_gamepad.c
+@@ -158,6 +158,20 @@
+  * A real controller plugged into the PC drives this emulated one. */
+ #include "../input/xinput_xbox.h"
+ 
++/* XID output wire layout: report ID, size, left/right little-endian motors.
++ * Protocol reference: xemu hw/xbox/xid.h XIDGamepadOutputReport. */
++int usb_gamepad_output(UsbGamepad *pad, const uint8_t *data, int length)
++{
++    if (!data || length != 6 || data[0] != 0 || data[1] != 6)
++        return -1;
++    XBOX_VIBRATION vibration;
++    vibration.wLeftMotorSpeed = (WORD)(data[2] | data[3] << 8);
++    vibration.wRightMotorSpeed = (WORD)(data[4] | data[5] << 8);
++    /* Keyboard-only and non-haptic host devices still accept USB reports. */
++    xbox_InputSetState(pad->input_port, &vibration);
++    return length;
++}
++
+ /*
+  * The Xbox report is 20 bytes and fixed:
+  *
+diff --git a/src/usb/usb_gamepad.h b/src/usb/usb_gamepad.h
+--- a/src/usb/usb_gamepad.h
++++ b/src/usb/usb_gamepad.h
+@@ -45,5 +45,8 @@
+ /* Fill in the 20-byte input report. Returns the byte count written. */
+ int usb_gamepad_report(UsbGamepad *pad, uint8_t *out, int max);
+ 
++/* Consume one complete six-byte XID motor report; -1 means malformed. */
++int usb_gamepad_output(UsbGamepad *pad, const uint8_t *data, int length);
++
+ 
+ #endif /* XBOX_USB_GAMEPAD_H */

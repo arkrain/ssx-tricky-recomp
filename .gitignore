@@ -1,0 +1,17 @@
+/game/
+/iso/
+/saves/
+/third_party/
+/build/
+/reports/
+/src/recomp/gen/
+/.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.log
+*.core
+core
+
+/.cache/
+/.local/

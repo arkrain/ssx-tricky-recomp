@@ -1,0 +1,31 @@
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -422,7 +422,12 @@
+ 
+ /* PCRTC interrupt status is write-one-to-clear, not ordinary RAM. Keep
+  * the summary pending until guest acknowledgement, including across DPCs. */
+-static inline void RECOMP_STORE32(uint32_t addr, uint32_t value)
++#if defined(_MSC_VER)
++__declspec(noinline)
++#elif defined(__GNUC__)
++__attribute__((noinline))
++#endif
++static void RECOMP_STORE32_DEVICE(uint32_t addr, uint32_t value)
+ {
+     if (addr == 0xFD100410u) {
+         /* Publish CPU-written pushbuffer data before the guest updates PUT.
+@@ -454,6 +459,14 @@
+     } else {
+         MEM32(addr) = value;
+     }
++}
++
++/* Device side effects live above the NV2A aperture. Keep ordinary RAM writes
++ * small enough to inline without duplicating the register dispatch machinery. */
++static inline void RECOMP_STORE32(uint32_t addr, uint32_t value)
++{
++    if (addr < 0xFD000000u) MEM32(addr) = value;
++    else RECOMP_STORE32_DEVICE(addr, value);
+ }
+ 
+ /** Signed memory reads. */

@@ -1,0 +1,61 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -1428,14 +1428,11 @@
+  * Reconstruct homogeneous window coordinates and interpolate every varying. */
+ static void raster_shader_triangle(float p[3][4], uint32_t argb)
+ {
+-    float poly[2][10][28];
+-    int count=3, src=0;
++    float homogeneous[3][4];
+     for(int v=0;v<3;v++) {
+         for(int k=0;k<4;k++) if(!isfinite(p[v][k])) return;
+-        memcpy(poly[0][v],p[v],16);
+-        for(int k=0;k<3;k++) poly[0][v][k]*=p[v][3];
+-        memcpy(poly[0][v]+4,s_triangle_color[v],32);
+-        memcpy(poly[0][v]+12,s_triangle_tex[v],64);
++        memcpy(homogeneous[v],p[v],16);
++        for(int k=0;k<3;k++) homogeneous[v][k]*=p[v][3];
+     }
+     float clip_far;
+     memcpy(&clip_far,&s_render_reg[0x398/4],4);
+@@ -1446,7 +1443,7 @@
+      * expressions as the slow path, preserving boundary rounding. */
+     unsigned outside=0, common=127;
+     for(int v=0;v<3;v++) {
+-        const float *a=poly[0][v];
++        const float *a=homogeneous[v];
+         if(!isfinite(a[0]) || !isfinite(a[1]) || !isfinite(a[2])) {
+             outside=127;common=0;break;
+         }
+@@ -1460,7 +1457,30 @@
+         outside|=code;common&=code;
+     }
+     if(common)return;
+-    for(int plane=0;outside && plane<7;plane++) {
++    if(!outside) {
++        /* Preserve the existing multiply/divide rounding, but avoid copying
++         * all 24 varyings into and out of a clipping polygon that is never
++         * clipped. The current triangle already owns these varyings. */
++        float screen[3][4],uv[3][2];
++        for(int v=0;v<3;v++) {
++            for(int k=0;k<3;k++)screen[v][k]=homogeneous[v][k]/homogeneous[v][3];
++            screen[v][3]=homogeneous[v][3];
++            uv[v][0]=s_triangle_tex[v][0][0];uv[v][1]=s_triangle_tex[v][0][1];
++            if(tex_size_from_format(s_gpu.tex.color)) {
++                uv[v][0]*=s_gpu.tex.width;uv[v][1]*=s_gpu.tex.height;
++            }
++        }
++        raster_triangle(screen[0],screen[1],screen[2],argb,uv);
++        return;
++    }
++    float poly[2][10][28];
++    int count=3,src=0;
++    for(int v=0;v<3;v++) {
++        memcpy(poly[0][v],homogeneous[v],16);
++        memcpy(poly[0][v]+4,s_triangle_color[v],32);
++        memcpy(poly[0][v]+12,s_triangle_tex[v],64);
++    }
++    for(int plane=0;plane<7;plane++) {
+         int dst=src^1, n=0;
+         for(int i=0;i<count;i++) {
+             float *a=poly[src][i], *b=poly[src][(i+1)%count];

@@ -1,0 +1,59 @@
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -1626,12 +1626,16 @@
+ static void bridge_MmGetPhysicalAddress(void)
+ {
+     uint32_t addr = STACK_ARG(0);
+-    /* The contiguous arena is the virtual window for physical RAM.
+-     * DMA consumers need its physical offset, not the high virtual-address bit.
+-     * Preserve existing identity behavior outside this mapped window. */
+-    g_eax = (addr >= XBOX_CONTIG_BASE &&
+-             (uint64_t)addr < (uint64_t)XBOX_CONTIG_BASE + XBOX_CONTIG_SIZE)
+-          ? addr - XBOX_CONTIG_BASE : addr;
++    /* The low guest map and the contiguous arena are distinct host mappings.
++     * Give ordinary RAM a disjoint emulated bus window so DMA can distinguish
++     * e.g. static data at 0x201674 from contiguous VA 0x80201674. */
++    if (addr >= XBOX_CONTIG_BASE &&
++        (uint64_t)addr < (uint64_t)XBOX_CONTIG_BASE + XBOX_CONTIG_SIZE)
++        g_eax = addr - XBOX_CONTIG_BASE;
++    else if (addr && addr < xbox_GetMappedSize() && addr < 0x40000000u)
++        g_eax = addr + 0x40000000u;
++    else
++        g_eax = addr;
+ }
+ 
+ /* ── MmSetAddressProtect (ordinal 182) ───────────────────── */
+--- a/src/usb/ohci.c
++++ b/src/usb/ohci.c
+@@ -316,18 +316,19 @@
+  * which is a crash the title itself would never have had. A device model
+  * following a pointer a title left lying around has to check it first.
+  */
+-static int guest_ok(uint32_t va, uint32_t bytes)
+-{
+-    uint64_t end = (uint64_t)va + bytes;
+-    if (va < xbox_ContiguousAllocatedBytes())
+-        return end <= xbox_ContiguousAllocatedBytes();
+-    return va != 0 && end <= xbox_GetMappedSize();
+-}
+-static uint8_t *guest_ptr(uint32_t va, uint32_t bytes)
+-{
+-    if (!guest_ok(va, bytes)) return NULL;
+-    uintptr_t address = va;
+-    if (va < xbox_ContiguousAllocatedBytes()) address += XBOX_CONTIG_BASE;
++/* MmGetPhysicalAddress uses a disjoint synthetic bus window for low RAM.
++ * Never infer the mapping from overlapping virtual/physical numeric values. */
++static int guest_ok(uint32_t pa, uint32_t bytes)
++{
++    uint64_t end = (uint64_t)pa + bytes;
++    if (pa >= 0x40000000u && pa < 0x80000000u)
++        return end <= 0x40000000ull + xbox_GetMappedSize() && end <= 0x80000000ull;
++    return end <= xbox_ContiguousAllocatedBytes();
++}
++static uint8_t *guest_ptr(uint32_t pa, uint32_t bytes)
++{
++    if (!guest_ok(pa, bytes)) return NULL;
++    uintptr_t address = pa >= 0x40000000u ? pa - 0x40000000u : XBOX_CONTIG_BASE + pa;
+     return (uint8_t *)((uintptr_t)xbox_GetMemoryOffset() + address);
+ }
+ static uint32_t rd32(uint32_t va)

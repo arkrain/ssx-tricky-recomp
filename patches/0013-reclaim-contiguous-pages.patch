@@ -1,0 +1,212 @@
+--- a/src/kernel/xbox_memory_layout.c
++++ b/src/kernel/xbox_memory_layout.c
+@@ -2142,55 +2142,51 @@
+         g_thread_stacks_used--;
+ }
+ 
+-/* Bump allocator over the contiguous window mapped at XBOX_CONTIG_BASE.
+- *
+- * MmAllocateContiguousMemory hands back physical memory, and on Xbox physical
+- * page P is visible at 0x80000000 + P. Drivers rely on that being an exact
+- * round trip: Xbox D3D writes its pushbuffer position to the NV2A as
+- * `VA & 0x0FFFFFFF` and reads the GPU's position back as `GET | 0x80000000`,
+- * then compares the two. That holds for any address in this window and for
+- * nothing in the general heap, whose position depends on what the title
+- * reserved first -- Half-Life 2 reserves 128 MB and then 200 MB before D3D
+- * allocates its pushbuffer, which put the buffer at 0x15782000 and left the
+- * engine comparing 0x857844C0 against it forever.
+- *
+- * Grows up from the base; XBOX_GPU_INSTANCE_DEFAULT is carved off the top by
+- * the GPU-instance bridge, so the two do not meet until the window is full.
+- * Never freed: contiguous blocks are framebuffers and pushbuffers, which a
+- * title allocates once. */
+-static uint32_t g_contig_next = XBOX_CONTIG_BASE;
+-
++/* Page allocator for GPU-accessible memory. Frees must recycle pages: texture
++ * and streaming resources are transient, not only startup framebuffers. */
++#include "contiguous_pages.h"
++static ContiguousPages g_contig_pages;
++static volatile LONG g_contig_lock;
++static void contig_lock(void) {
++    while (InterlockedCompareExchange(&g_contig_lock, 1, 0)) Sleep(0);
++}
++uint32_t xbox_ContiguousAllocRange(uint32_t size, uint32_t alignment,
++                                  uint32_t low, uint32_t high)
++{
++    contig_lock();
++    uint32_t offset = contiguous_take(&g_contig_pages,
++        XBOX_CONTIG_SIZE - XBOX_GPU_INSTANCE_DEFAULT, size, alignment, low, high);
++    if (offset != CONTIG_NO_SPACE)
++        memset((void *)((uintptr_t)XBOX_CONTIG_BASE + offset + g_memory_offset),
++               0, ((uint64_t)size + 4095) & ~4095ull);
++    InterlockedExchange(&g_contig_lock, 0);
++    if (offset == CONTIG_NO_SPACE) {
++        fprintf(stderr, "[CONTIG] cannot allocate %u bytes (alignment %u, range %08X..%08X)\n",
++                size, alignment, low, high);
++        return 0;
++    }
++    return XBOX_CONTIG_BASE + offset;
++}
+ uint32_t xbox_ContiguousAlloc(uint32_t size, uint32_t alignment)
+ {
+-    uint32_t result;
+-
+-    if (alignment < 4096) alignment = 4096;
+-    result = (g_contig_next + alignment - 1) & ~(alignment - 1);
+-
+-    /* Leave the top of the window for GPU instance memory. */
+-    if ((uint64_t)result + size >
+-            (uint64_t)XBOX_CONTIG_BASE + XBOX_CONTIG_SIZE
+-                - XBOX_GPU_INSTANCE_DEFAULT) {
+-        fprintf(stderr, "  [CONTIG] arena exhausted (%u requested, %u of %u used)\n",
+-                size, g_contig_next - XBOX_CONTIG_BASE,
+-                (unsigned)XBOX_CONTIG_SIZE);
+-        fflush(stderr);
+-        return 0;
+-    }
+-
+-    g_contig_next = result + size;
+-    memset((void *)((uintptr_t)result + g_memory_offset), 0, size);
+-    return result;
+-}
+-
+-/* How much of the window has been handed out.
+- *
+- * Lets a caller holding a physical address decide whether it names contiguous
+- * memory this runtime allocated. The pushbuffer executor needs exactly that:
+- * a surface offset is physical, and only the window makes it addressable. */
++    return xbox_ContiguousAllocRange(size, alignment, 0, UINT32_MAX);
++}
++void xbox_ContiguousFree(uint32_t address)
++{
++    if (!address) return;
++    contig_lock();
++    int released = address >= XBOX_CONTIG_BASE &&
++                   contiguous_release(&g_contig_pages, address - XBOX_CONTIG_BASE);
++    InterlockedExchange(&g_contig_lock, 0);
++    if (!released) fprintf(stderr, "[CONTIG] invalid free %08X\n", address);
++}
+ uint32_t xbox_ContiguousAllocatedBytes(void)
+ {
+-    return g_contig_next - XBOX_CONTIG_BASE;
++    /* High-water mark: physical DMA offsets below it use this memory view. */
++    contig_lock();
++    uint32_t bytes = g_contig_pages.high_water;
++    InterlockedExchange(&g_contig_lock, 0);
++    return bytes;
+ }
+ 
+ 
+--- a/src/kernel/xbox_memory_layout.h
++++ b/src/kernel/xbox_memory_layout.h
+@@ -187,6 +187,8 @@
+ /* Allocate from the contiguous (physical-mirror) arena. Returns a guest VA
+  * below 256 MB, or 0 when the arena is exhausted. */
+ uint32_t xbox_ContiguousAlloc(uint32_t size, uint32_t alignment);
++uint32_t xbox_ContiguousAllocRange(uint32_t size, uint32_t alignment, uint32_t low, uint32_t high);
++void xbox_ContiguousFree(uint32_t address);
+ uint32_t xbox_ContiguousAllocatedBytes(void);
+ 
+ int xbox_Nv2aMirrorFence(uint32_t device_ptr_va,
+--- a/src/kernel/kernel_bridge.c
++++ b/src/kernel/kernel_bridge.c
+@@ -692,36 +692,7 @@
+ 
+     (void)prot;
+ 
+-    /*
+-     * A caller that constrains the range to exactly one allocation's worth is
+-     * demanding a specific physical address, not expressing a preference.
+-     * Halo does this for its two big pools and asserts on the result
+-     * (physical_memory_map.c:46) - XPhysicalAlloc passes lowest = the address
+-     * it wants and highest = lowest + size - 1, then requires
+-     * 0x80000000 | lowest back. Satisfying that from the heap fails the assert
+-     * and leaves its whole memory map wrong.
+-     */
+-    if (low && high >= low && (high - low + 1) <= size + 0x1000) {
+-        xbox_va = XBOX_PHYSICAL_MIRROR_BASE + low;
+-
+-        /* The console hands out zeroed pages here, and titles rely on it:
+-         * pool headers and free-list roots are assumed clear, so whatever the
+-         * backing view happened to contain shows up later as structures that
+-         * are "allocated" but full of garbage. */
+-        memset((void *)((uintptr_t)xbox_va + g_xbox_mem_offset), 0, size);
+-
+-        if (KERNEL_LOG_ON_HALF()) {
+-            fprintf(stderr, "  [KERNEL] MmAllocateContiguousMemoryEx: size=%u "
+-                    "pinned phys 0x%08X -> Xbox VA 0x%08X (zeroed)\n",
+-                    size, low, xbox_va);
+-            fflush(stderr);
+-        }
+-        g_eax = xbox_va;
+-        return;
+-    }
+-
+-    if (align < 4096) align = 4096;
+-    xbox_va = xbox_ContiguousAlloc(size, align);
++    xbox_va = xbox_ContiguousAllocRange(size, align, low, high);
+ 
+     if (KERNEL_LOG_ON_HALF()) {
+         fprintf(stderr, "  [KERNEL] MmAllocateContiguousMemoryEx: size=%u align=%u → Xbox VA 0x%08X\n",
+@@ -738,7 +709,7 @@
+ static void bridge_MmFreeContiguousMemory(void)
+ {
+     uint32_t addr = STACK_ARG(0);
+-    xbox_HeapFree(addr);
++    xbox_ContiguousFree(addr);
+     g_eax = 0;
+ }
+ 
+--- /dev/null
++++ b/src/kernel/contiguous_pages.h
+@@ -0,0 +1,50 @@
++#ifndef CONTIGUOUS_PAGES_H
++#define CONTIGUOUS_PAGES_H
++#include <stdint.h>
++#include <string.h>
++#define CONTIG_PAGE_SIZE 4096u
++#define CONTIG_PAGE_COUNT 16384u
++#define CONTIG_NO_SPACE UINT32_MAX
++typedef struct ContiguousPages {
++    uint16_t spans[CONTIG_PAGE_COUNT];
++    uint32_t high_water;
++} ContiguousPages;
++/* Caller serializes access. All offsets and inclusive bounds are physical. */
++static uint32_t contiguous_take(ContiguousPages *arena, uint32_t capacity,
++                                uint32_t size, uint32_t alignment,
++                                uint32_t low, uint32_t high)
++{
++    if (!size || capacity > CONTIG_PAGE_SIZE * CONTIG_PAGE_COUNT ||
++        size > capacity || low > high) return CONTIG_NO_SPACE;
++    if (!alignment) alignment = CONTIG_PAGE_SIZE;
++    if (alignment & (alignment - 1)) return CONTIG_NO_SPACE;
++    if (alignment < CONTIG_PAGE_SIZE) alignment = CONTIG_PAGE_SIZE;
++    uint64_t bytes = ((uint64_t)size + 4095) & ~4095ull;
++    uint64_t limit = (uint64_t)high + 1;
++    if (limit > capacity) limit = capacity;
++    uint64_t offset = ((uint64_t)low + alignment - 1) & ~((uint64_t)alignment - 1);
++    for (; offset + bytes <= limit; offset += alignment) {
++        uint32_t first = (uint32_t)offset / 4096, count = (uint32_t)bytes / 4096;
++        uint32_t i;
++        for (i = 0; i < count && arena->spans[first + i] == 0; ++i) {}
++        if (i != count) {
++            uint64_t after = (uint64_t)(first + i + 1) * 4096;
++            offset = ((after + alignment - 1) & ~((uint64_t)alignment - 1)) - alignment;
++            continue;
++        }
++        arena->spans[first] = (uint16_t)count;
++        for (i = 1; i < count; ++i) arena->spans[first + i] = UINT16_MAX;
++        if (offset + bytes > arena->high_water) arena->high_water = (uint32_t)(offset + bytes);
++        return (uint32_t)offset;
++    }
++    return CONTIG_NO_SPACE;
++}
++static int contiguous_release(ContiguousPages *arena, uint32_t offset)
++{
++    if (offset % 4096 || offset / 4096 >= CONTIG_PAGE_COUNT) return 0;
++    uint32_t first = offset / 4096, count = arena->spans[first];
++    if (!count || count == UINT16_MAX || first + count > CONTIG_PAGE_COUNT) return 0;
++    memset(arena->spans + first, 0, count * sizeof(arena->spans[0]));
++    return 1;
++}
++#endif

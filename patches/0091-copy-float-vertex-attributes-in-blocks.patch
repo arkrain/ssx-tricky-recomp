@@ -1,0 +1,20 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -441,8 +441,15 @@
+         return 1;
+     }
+     case 2:                                  /* float */
+-        for (i = 0; i < a->size && i < 4; i++)
+-            out[i] = ((const float *)p)[i];
++        /* Fixed-size copies let the common float4 path use a vector load.
++         * Preserve default components for shorter attributes and copy raw
++         * bits, including exceptional floating-point values. */
++        switch(a->size) {
++        case 1: memcpy(out,p,4);break;
++        case 2: memcpy(out,p,8);break;
++        case 3: memcpy(out,p,12);break;
++        default:memcpy(out,p,16);break;
++        }
+         return 1;
+     case 4:                                  /* unsigned byte, normalised */
+         for (i = 0; i < a->size && i < 4; i++)

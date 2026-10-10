@@ -1,0 +1,93 @@
+--- a/src/apu/apu_vp.c
++++ b/src/apu/apu_vp.c
+@@ -982,6 +982,77 @@
+     return requested_num;
+ }
+ 
++
++/* Bounded opt-in observation of a mono S16 ring and its VP consumption.
++ * Record: 16 u32 metadata, 32 stereo f32 samples, then two 128-s16 windows.
++ * Windows start 32 samples before CBO. No guest memory or registers changed. */
++typedef struct {
++    uint32_t meta[16];
++    float output[NUM_SAMPLES_PER_FRAME][2];
++    int16_t before[128], after[128];
++} VoiceCapture;
++static FILE *voice_capture_file;
++static unsigned voice_capture_count;
++static int voice_capture_selected = -2;
++static void voice_capture_window(MCPXAPUState *d, VoiceCapture *r, int16_t *dst)
++{
++    uint32_t start = r->meta[3], ba = r->meta[5], lbo = r->meta[6], ebo = r->meta[7];
++    uint32_t size = ebo - lbo + 1;
++    for (unsigned i = 0; i < 128; i++) {
++        uint32_t pos = lbo + (start - lbo + size - 32 + i) % size;
++        hwaddr addr = get_data_ptr(d->regs[NV_PAPU_VPSGEADDR], 0xFFFFFFFF, ba + pos * 2);
++        dst[i] = (int16_t)lduw_le_phys(address_space_memory, addr);
++    }
++}
++static bool voice_capture_begin(MCPXAPUState *d, uint16_t v, float rate, VoiceCapture *r)
++{
++    if (voice_capture_selected == -2) {
++        const char *path = getenv("RECOMP_APU_VOICE_DUMP");
++        const char *selected = getenv("RECOMP_APU_VOICE");
++        voice_capture_selected = -1;
++        if (path && *path) {
++            char *end; unsigned long n = selected ? strtoul(selected, &end, 10) : 66;
++            if ((!selected || (end != selected && !*end)) && n < MCPX_HW_MAX_VOICES) {
++                voice_capture_file = fopen(path, "wb");
++                if (voice_capture_file) voice_capture_selected = (int)n;
++            }
++        }
++    }
++    if (v != voice_capture_selected || !voice_capture_file || voice_capture_count >= 15000) return false;
++    memset(r, 0, sizeof *r);
++    r->meta[0] = 0x31505653; r->meta[1] = v; r->meta[2] = d->ep_frame_div;
++    r->meta[3] = voice_get_mask(d,v,NV_PAVS_VOICE_PAR_OFFSET,NV_PAVS_VOICE_PAR_OFFSET_CBO);
++    r->meta[5] = voice_get_mask(d,v,NV_PAVS_VOICE_CUR_PSL_START,NV_PAVS_VOICE_CUR_PSL_START_BA);
++    r->meta[6] = voice_get_mask(d,v,NV_PAVS_VOICE_CUR_PSH_SAMPLE,NV_PAVS_VOICE_CUR_PSH_SAMPLE_LBO);
++    r->meta[7] = voice_get_mask(d,v,NV_PAVS_VOICE_PAR_NEXT,NV_PAVS_VOICE_PAR_NEXT_EBO);
++    r->meta[8] = voice_get_mask(d,v,NV_PAVS_VOICE_CFG_FMT,0xFFFFFFFF);
++    if ((r->meta[8] & (NV_PAVS_VOICE_CFG_FMT_STEREO | NV_PAVS_VOICE_CFG_FMT_DATA_TYPE |
++                       NV_PAVS_VOICE_CFG_FMT_SAMPLES_PER_BLOCK)) ||
++        GET_MASK(r->meta[8],NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE) != NV_PAVS_VOICE_CFG_FMT_SAMPLE_SIZE_S16 ||
++        GET_MASK(r->meta[8],NV_PAVS_VOICE_CFG_FMT_CONTAINER_SIZE) != 1 ||
++        r->meta[7] < r->meta[6] || r->meta[7]-r->meta[6]+1 < 128 ||
++        r->meta[7]-r->meta[6]+1 > 16384 || r->meta[3] < r->meta[6] || r->meta[3] > r->meta[7]) return false;
++    memcpy(&r->meta[10], &rate, 4);
++    float phase = (float)d->vp.filters[v].resample_phase;
++    memcpy(&r->meta[11], &phase, 4);
++    r->meta[12] = d->vp.filters[v].resample_valid; r->meta[13] = voice_capture_count;
++    uint64_t us = (uint64_t)qemu_clock_get_us(QEMU_CLOCK_REALTIME);
++    r->meta[14] = (uint32_t)us; r->meta[15] = (uint32_t)(us >> 32);
++    voice_capture_window(d, r, r->before);
++    return true;
++}
++static void voice_capture_end(MCPXAPUState *d, uint16_t v, VoiceCapture *r,
++                              const float samples[NUM_SAMPLES_PER_FRAME][2], int count)
++{
++    r->meta[4] = voice_get_mask(d,v,NV_PAVS_VOICE_PAR_OFFSET,NV_PAVS_VOICE_PAR_OFFSET_CBO);
++    r->meta[9] = (uint32_t)count;
++    memcpy(r->output, samples, sizeof r->output);
++    voice_capture_window(d, r, r->after);
++    if (fwrite(r, sizeof *r, 1, voice_capture_file) != 1 || ++voice_capture_count == 15000) {
++        fclose(voice_capture_file); voice_capture_file = NULL;
++    }
++}
++
+ /* ============================================================
+  * Voice processing (main per-voice function)
+  * ============================================================ */
+@@ -1054,7 +1125,11 @@
+     } else {
+         /* A source may finish partway through this frame. Mix the samples
+          * already produced; the remaining zero-filled tail stays silent. */
+-        if (!voice_resample(d, v, samples, NUM_SAMPLES_PER_FRAME, rate)) return;
++        VoiceCapture capture;
++        bool observing = voice_capture_begin(d, v, rate, &capture);
++        int produced = voice_resample(d, v, samples, NUM_SAMPLES_PER_FRAME, rate);
++        if (observing) voice_capture_end(d, v, &capture, samples, produced);
++        if (!produced) return;
+     }
+ 
+     /* Get volume bins */

@@ -1,0 +1,212 @@
+--- a/src/apu/apu_xaudio2.c
++++ b/src/apu/apu_xaudio2.c
+@@ -11,8 +11,7 @@
+ #include <string.h>
+ #include "apu_xaudio2.h"
+ 
+-/* The XAudio2 backend is Windows-only. On Linux all xa2_* functions are
+- * stubbed to report inactive; real audio output via SDL2 comes later. */
++/* Keep the common output API; Windows uses XAudio2, POSIX uses SDL2. */
+ #if defined(_WIN32)
+ 
+ #define COBJMACROS
+@@ -161,12 +160,51 @@
+     return XA2_BUF_SAMPLES;
+ }
+ 
+-#else /* !_WIN32 -- POSIX stubs (no audio output yet) */
+-
+-int  xa2_init(void)                                   { return 0; }
+-void xa2_shutdown(void)                               {}
+-int  xa2_is_active(void)                              { return 0; }
+-int  xa2_submit_samples(const int16_t *s, int n)      { (void)s; (void)n; return 0; }
+-int  xa2_get_buffer_size(void)                        { return 0; }
+-
+-#endif /* _WIN32 */
++#else /* POSIX: queued SDL2 audio */
++#include <SDL.h>
++
++static SDL_AudioDeviceID s_device;
++static int s_audio_initialized;
++#define SDL_AUDIO_FRAMES 256
++#define SDL_AUDIO_MAX_BYTES (SDL_AUDIO_FRAMES * 2 * sizeof(int16_t) * 4)
++
++int xa2_init(void)
++{
++    if (s_device) return 1;
++    if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
++        fprintf(stderr, "[Audio] SDL initialization failed: %s\n", SDL_GetError());
++        return 0;
++    }
++    s_audio_initialized = 1;
++    SDL_AudioSpec desired = {0}, obtained = {0};
++    desired.freq = 48000;
++    desired.format = AUDIO_S16SYS;
++    desired.channels = 2;
++    desired.samples = SDL_AUDIO_FRAMES;
++    s_device = SDL_OpenAudioDevice(NULL, 0, &desired, &obtained, 0);
++    if (!s_device) {
++        fprintf(stderr, "[Audio] SDL device failed: %s\n", SDL_GetError());
++        xa2_shutdown();
++        return 0;
++    }
++    SDL_PauseAudioDevice(s_device, 0);
++    fprintf(stderr, "[Audio] SDL2 output: 48000 Hz stereo signed 16-bit\n");
++    return 1;
++}
++void xa2_shutdown(void)
++{
++    if (s_device) SDL_CloseAudioDevice(s_device);
++    s_device = 0;
++    if (s_audio_initialized) SDL_QuitSubSystem(SDL_INIT_AUDIO);
++    s_audio_initialized = 0;
++}
++int xa2_is_active(void) { return s_device != 0; }
++int xa2_submit_samples(const int16_t *samples, int frames)
++{
++    if (!s_device || !samples || frames <= 0 || frames > SDL_AUDIO_FRAMES) return 0;
++    unsigned bytes = (unsigned)frames * 2 * sizeof(int16_t);
++    if (SDL_GetQueuedAudioSize(s_device) + bytes > SDL_AUDIO_MAX_BYTES) return 0;
++    return SDL_QueueAudio(s_device, samples, bytes) == 0;
++}
++int xa2_get_buffer_size(void) { return SDL_AUDIO_FRAMES; }
++#endif
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -212,10 +212,10 @@
+ 
+     /* Try XAudio2 first (lower latency) */
+     if (xa2_init()) {
+-        fprintf(stderr, "[APU] Using XAudio2 audio backend\n");
++        fprintf(stderr, "[APU] Using queued audio output backend\n");
+         return;
+     }
+-    fprintf(stderr, "[APU] XAudio2 unavailable, falling back to waveOut\n");
++    fprintf(stderr, "[APU] Queued audio unavailable, trying waveOut\n");
+ 
+     WAVEFORMATEX wfx = { 0 };
+     wfx.wFormatTag      = WAVE_FORMAT_PCM;
+@@ -274,92 +274,38 @@
+         return;
+     }
+ 
+-    /* XAudio2 path: render and submit a buffer */
++    /* One EP frame is 256 stereo samples, already filled by VP/DSP.
++     * Never clear it before mixing or generate four frames per 5.33 ms tick. */
++    if (g_audio_muted) {
++        memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
++    } else {
++        if (g_test_tone.active) {
++            for (int i = 0; i < MIXER_FRAME_SAMPLES; ++i) {
++                int16_t sample = (int16_t)(sin(g_test_tone.phase) * g_test_tone.amplitude);
++                d->monitor.frame_buf[i][0] = sample;
++                d->monitor.frame_buf[i][1] = sample;
++                g_test_tone.phase += g_test_tone.phase_inc;
++                if (g_test_tone.phase >= 2.0 * M_PI) g_test_tone.phase -= 2.0 * M_PI;
++            }
++        }
++        mixer_render(d->monitor.frame_buf, MIXER_FRAME_SAMPLES);
++    }
+     if (xa2_is_active()) {
+-        int buf_size = xa2_get_buffer_size();
+-        int16_t xa2_tmp[1024][2];  /* matches XA2_BUF_SAMPLES max */
+-        int remaining = buf_size;
+-        int out_offset = 0;
+-
+-        while (remaining > 0) {
+-            int chunk = (remaining < MIXER_FRAME_SAMPLES) ? remaining : MIXER_FRAME_SAMPLES;
+-            memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
+-
+-            if (g_test_tone.active && !g_audio_muted) {
+-                for (int i = 0; i < chunk; i++) {
+-                    int16_t s = (int16_t)(sin(g_test_tone.phase) * g_test_tone.amplitude);
+-                    d->monitor.frame_buf[i][0] = s;
+-                    d->monitor.frame_buf[i][1] = s;
+-                    g_test_tone.phase += g_test_tone.phase_inc;
+-                    if (g_test_tone.phase >= 2.0 * M_PI)
+-                        g_test_tone.phase -= 2.0 * M_PI;
+-                }
+-            }
+-
+-            if (!g_audio_muted)
+-                mixer_render(d->monitor.frame_buf, chunk);
+-
+-            memcpy(xa2_tmp + out_offset, d->monitor.frame_buf, chunk * 2 * sizeof(int16_t));
+-            out_offset += chunk;
+-            remaining -= chunk;
+-        }
+-
+-        xa2_submit_samples((const int16_t *)xa2_tmp, buf_size);
+-        return;
+-    }
+-
+-    if (!g_waveout.initialized) return;
+-
+-    int idx = g_waveout.next_buf;
+-    WAVEHDR *hdr = &g_waveout.hdrs[idx];
+-
+-    /* Wait if this buffer is still playing (with timeout) */
+-    int wait_loops = 0;
+-    while (!(hdr->dwFlags & WHDR_DONE) && (hdr->dwFlags & WHDR_INQUEUE)) {
+-        qemu_mutex_unlock(&d->lock);
+-        Sleep(1);
+-        qemu_mutex_lock(&d->lock);
+-        if (++wait_loops > 50) break;
+-    }
+-
+-    /* Fill the large waveOut buffer by rendering multiple 256-sample frames */
+-    int16_t *out = (int16_t *)g_waveout.bufs[idx];
+-    int remaining = WAVEOUT_BUF_SAMPLES;
+-    int out_offset = 0;
+-
+-    while (remaining > 0) {
+-        int chunk = (remaining < MIXER_FRAME_SAMPLES) ? remaining : MIXER_FRAME_SAMPLES;
+-
+-        memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
+-
+-        /* Test tone (skip if muted) */
+-        if (g_test_tone.active && !g_audio_muted) {
+-            for (int i = 0; i < chunk; i++) {
+-                int16_t s = (int16_t)(sin(g_test_tone.phase) * g_test_tone.amplitude);
+-                d->monitor.frame_buf[i][0] = s;
+-                d->monitor.frame_buf[i][1] = s;
+-                g_test_tone.phase += g_test_tone.phase_inc;
+-                if (g_test_tone.phase >= 2.0 * M_PI)
+-                    g_test_tone.phase -= 2.0 * M_PI;
+-            }
+-        }
+-
+-        /* Mix software voices (skip if muted) */
+-        if (!g_audio_muted)
+-            mixer_render(d->monitor.frame_buf, chunk);
+-
+-        /* Copy to waveOut buffer */
+-        memcpy(out + out_offset * 2, d->monitor.frame_buf, chunk * 2 * sizeof(int16_t));
+-        out_offset += chunk;
+-        remaining -= chunk;
+-    }
+-
+-    /* Submit to waveOut */
+-    hdr->dwFlags &= ~WHDR_DONE;
+-    waveOutWrite(g_waveout.hwo, hdr, sizeof(WAVEHDR));
+-
+-    g_waveout.next_buf = (idx + 1) % WAVEOUT_NUM_BUFS;
+-    g_waveout.frames_written++;
++        xa2_submit_samples((const int16_t *)d->monitor.frame_buf, MIXER_FRAME_SAMPLES);
++    } else if (g_waveout.initialized) {
++        int idx = g_waveout.next_buf;
++        WAVEHDR *hdr = &g_waveout.hdrs[idx];
++        if ((hdr->dwFlags & WHDR_DONE) || !(hdr->dwFlags & WHDR_INQUEUE)) {
++            memcpy(g_waveout.bufs[idx], d->monitor.frame_buf, sizeof(d->monitor.frame_buf));
++            hdr->dwBufferLength = sizeof(d->monitor.frame_buf);
++            hdr->dwFlags &= ~WHDR_DONE;
++            waveOutWrite(g_waveout.hwo, hdr, sizeof(WAVEHDR));
++            g_waveout.next_buf = (idx + 1) % WAVEOUT_NUM_BUFS;
++            g_waveout.frames_written++;
++        }
++    }
++    /* The next eight VP subframes accumulate into an empty output frame. */
++    memset(d->monitor.frame_buf, 0, sizeof(d->monitor.frame_buf));
+ }
+ 
+ /* ============================================================

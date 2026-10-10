@@ -1,0 +1,326 @@
+diff --git a/src/usb/ohci.c b/src/usb/ohci.c
+--- a/src/usb/ohci.c
++++ b/src/usb/ohci.c
+@@ -11,6 +11,7 @@
+ #include "../platform/mmio_decode.h"
+ #include "../kernel/xbox_memory_layout.h"
+ #include "usb_gamepad.h"
++#include "../input/xinput_xbox.h"
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -119,6 +120,8 @@
+     uint32_t reg[OHCI_REG_MAX / 4];
+     unsigned reads, writes, decode_fail;
+     volatile LONG irq_ack_generation;
++    UsbGamepad pads[OHCI_PORTS];
++    unsigned default_port;
+     int      index;
+ } OhciController;
+ 
+@@ -244,8 +247,13 @@
+              * thread inside a fault handler, and pointing g_esp at a worker
+              * stack from here would overwrite the stack pointer of the thread
+              * being interrupted. */
+-            if (*ps & PORT_CCS)
++            if (*ps & PORT_CCS) {
+                 *ps |= PORT_PES;
++                hc->pads[port].address = 0;
++                hc->pads[port].configuration = 0;
++                hc->pads[port].setup_pending = 0;
++                hc->default_port = port;
++            }
+             *ps |= PORT_PRSC;
+             hc->reg[HcInterruptStatus / 4] |= INTR_RHSC;
+         }
+@@ -306,10 +314,7 @@
+ 
+ #define HCCA_DONE_HEAD 0x84
+ 
+-static uint32_t g_setup_pending;      /* wLength of the last SETUP seen */
+-static UsbSetup g_setup;
+-static uint8_t g_control_reply[256];
+-static int g_control_size, g_control_offset;
++
+ 
+ /* Every address below came out of guest memory, so none of them are trusted.
+  *
+@@ -348,9 +353,27 @@
+     if (p) memcpy(p, &value, 4);
+ }
+ 
++/* Address zero belongs to the last reset port while it enumerates. Other
++ * endpoints must match an enabled device on this controller's bus. */
++static UsbGamepad *ohci_pad_for_address(OhciController *hc, unsigned address)
++{
++    if (!address) {
++        unsigned p=hc->default_port;
++        return (hc->reg[(HcRhPortStatus1+p*4)/4] & (PORT_CCS|PORT_PES)) ==
++            (PORT_CCS|PORT_PES) ? &hc->pads[p] : NULL;
++    }
++    for (unsigned p=0; p<OHCI_PORTS; ++p)
++        if ((hc->reg[(HcRhPortStatus1+p*4)/4] & (PORT_CCS|PORT_PES)) ==
++            (PORT_CCS|PORT_PES) && hc->pads[p].address == address)
++            return &hc->pads[p];
++    return NULL;
++}
++
+ /* Move one transfer descriptor. Returns the condition code to report. */
+ static uint32_t ohci_do_td(OhciController *hc, uint32_t ed0, uint32_t td)
+ {
++    UsbGamepad *pad = ohci_pad_for_address(hc, ed0 & 0x7fu);
++    if (!pad) return 5; /* DeviceNotResponding */
+     uint32_t info = rd32(td);
+     uint32_t cbp  = rd32(td + 4);
+     uint32_t be   = rd32(td + 12);
+@@ -371,19 +394,19 @@
+         if (len >= 8) {
+             const uint8_t *p = guest_ptr(cbp, 8);
+             if (!p) return TD_CC_NOERROR;
+-            g_setup.bmRequestType = p[0];
+-            g_setup.bRequest      = p[1];
+-            g_setup.wValue        = (uint16_t)(p[2] | (p[3] << 8));
+-            g_setup.wIndex        = (uint16_t)(p[4] | (p[5] << 8));
+-            g_setup.wLength       = (uint16_t)(p[6] | (p[7] << 8));
+-            g_setup_pending = 1;
+-            g_control_size = -2;
+-            g_control_offset = 0;
++            pad->setup.bmRequestType = p[0];
++            pad->setup.bRequest      = p[1];
++            pad->setup.wValue        = (uint16_t)(p[2] | (p[3] << 8));
++            pad->setup.wIndex        = (uint16_t)(p[4] | (p[5] << 8));
++            pad->setup.wLength       = (uint16_t)(p[6] | (p[7] << 8));
++            pad->setup_pending = 1;
++            pad->control_size = -2;
++            pad->control_offset = 0;
+             if (s_trace) {
+                 fprintf(stderr, "  [OHCI%d] SETUP %02X %02X value %04X "
+                                 "index %04X len %u\n",
+-                        hc->index, g_setup.bmRequestType, g_setup.bRequest,
+-                        g_setup.wValue, g_setup.wIndex, g_setup.wLength);
++                        hc->index, pad->setup.bmRequestType, pad->setup.bRequest,
++                        pad->setup.wValue, pad->setup.wIndex, pad->setup.wLength);
+                 fflush(stderr);
+             }
+             moved = 8;
+@@ -394,19 +417,19 @@
+              * driver asks for nothing. */
+             int n;
+ 
+-            if (!g_setup_pending)
++            if (!pad->setup_pending)
+                 return TD_CC_NOERROR;
+-            if (g_control_size == -2)
+-                g_control_size = usb_gamepad_control(&g_setup, g_control_reply, sizeof g_control_reply);
+-            n = g_control_size < 0 ? -1 : g_control_size - g_control_offset;
++            if (pad->control_size == -2)
++                pad->control_size = usb_gamepad_control(pad, &pad->setup, pad->control_reply, sizeof pad->control_reply);
++            n = pad->control_size < 0 ? -1 : pad->control_size - pad->control_offset;
+             if (n < 0) {
+-                g_setup_pending = 0;
++                pad->setup_pending = 0;
+                 return TD_CC_STALL;
+             }
+             if (n > len) n = len;
+             if (n > 0 && guest_ptr(cbp, (uint32_t)n))
+-                memcpy(guest_ptr(cbp, (uint32_t)n), g_control_reply + g_control_offset, (size_t)n);
+-            g_control_offset += n;
++                memcpy(guest_ptr(cbp, (uint32_t)n), pad->control_reply + pad->control_offset, (size_t)n);
++            pad->control_offset += n;
+             moved = n;
+             if (s_trace && n > 0) {
+                 fprintf(stderr, "  [OHCI%d] IN ep0 %d bytes\n", hc->index, n);
+@@ -415,7 +438,7 @@
+         } else {
+             /* The pad's report, on its interrupt endpoint. */
+             uint8_t rep[32];
+-            int n = usb_gamepad_report(rep, (int)sizeof rep);
++            int n = usb_gamepad_report(pad, rep, (int)sizeof rep);
+             if (n > len) n = len;
+             if (n > 0 && guest_ptr(cbp, (uint32_t)n))
+                 memcpy(guest_ptr(cbp, (uint32_t)n), rep, (size_t)n);
+@@ -425,7 +448,7 @@
+         /* OUT: the status stage of an IN control transfer, or rumble. Both
+          * are accepted and discarded. */
+         moved = len;
+-        g_setup_pending = 0;
++        pad->setup_pending = 0;
+     }
+ 
+     /* CBP is zero when everything asked for moved, and otherwise points past
+@@ -596,6 +619,8 @@
+     memset(hc, 0, sizeof *hc);
+     hc->base  = base;
+     hc->index = index;
++    for (unsigned p=0; p<OHCI_PORTS; ++p)
++        hc->pads[p].input_port = (unsigned)index*OHCI_PORTS+p;
+ 
+     hc->reg[HcRevision / 4]       = 0x00000010u;   /* OHCI 1.0             */
+     hc->reg[HcFmInterval / 4]     = 0x27782EDFu;   /* 11999, FSMPS default */
+@@ -654,7 +679,7 @@
+      * what killed the process here, two interrupts in, with no fault report
+      * because the fault was in the runtime rather than in the title. */
+     unsigned waited = 0;
+-    int plugged = 0;
++
+     uint32_t last_status = 0;
+     LONG last_ack = 0;
+     unsigned repeats = 0;
+@@ -689,18 +714,21 @@
+         if (!(enable & INTR_MIE))
+             continue;
+ 
+-        /* Plug the device in once, after the driver is running and listening.
+-         * Presenting it earlier does not work: the driver clears the connect
+-         * change during its own bring-up scan, and a reset clears interrupt
+-         * status, so a device that was always there is one that never
+-         * arrives. */
+-        if (!plugged && (enable & INTR_RHSC)) {
+-            hc->reg[HcRhPortStatus1 / 4] |= PORT_CCS | PORT_CSC;
+-            hc->reg[HcInterruptStatus / 4] |= INTR_RHSC;
+-            plugged = 1;
+-            fprintf(stderr, "  [OHCI0] operational after %u ms; device "
+-                            "arriving on port 1\n", waited);
+-            fflush(stderr);
++        /* Port zero retains keyboard fallback. Additional pads appear only
++         * when the host input backend has a controller in their stable slot. */
++        if (enable & INTR_RHSC) {
++            for (unsigned p=0; p<OHCI_PORTS; ++p) {
++                uint32_t *ps=&hc->reg[(HcRhPortStatus1+p*4)/4];
++                int connected=(p==0) || xbox_InputIsConnected(p);
++                if (connected != !!(*ps & PORT_CCS)) {
++                    if (connected) *ps |= PORT_CCS;
++                    else *ps &= ~(PORT_CCS|PORT_PES);
++                    *ps |= PORT_CSC;
++                    hc->reg[HcInterruptStatus/4] |= INTR_RHSC;
++                    fprintf(stderr,"  [OHCI0] device %s on port %u\n",
++                            connected ? "arriving" : "removed",p+1);
++                }
++            }
+         }
+ 
+         /* Advance both frame counters together. The guest uses HCCA when
+@@ -811,7 +839,7 @@
+ #endif
+ 
+     fprintf(stderr, "  OHCI: two controllers at 0x%08X and 0x%08X, "
+-                    "%d ports each, one device on HC0 port 1\n",
++                    "%d ports each, HC0 keyboard/controller ports 1 and 2\n",
+             XBOX_OHCI0_BASE, XBOX_OHCI1_BASE, OHCI_PORTS);
+     fflush(stderr);
+ 
+diff --git a/src/usb/usb_gamepad.c b/src/usb/usb_gamepad.c
+--- a/src/usb/usb_gamepad.c
++++ b/src/usb/usb_gamepad.c
+@@ -47,10 +47,6 @@
+     7, 0x05, 0x02, 0x03, 0x20, 0x00, 0x04
+ };
+ 
+-static uint8_t s_address;
+-static uint8_t s_configuration;
+-
+-uint8_t usb_gamepad_address(void) { return s_address; }
+ 
+ /* ---- control transfers ------------------------------------------------- */
+ 
+@@ -77,7 +73,7 @@
+     return len;
+ }
+ 
+-int usb_gamepad_control(const UsbSetup *setup, uint8_t *out, int max)
++int usb_gamepad_control(UsbGamepad *pad, const UsbSetup *setup, uint8_t *out, int max)
+ {
+     int is_in = (setup->bmRequestType & 0x80) != 0;
+     int type  = (setup->bmRequestType >> 5) & 3;   /* 0 standard, 1 class */
+@@ -102,16 +98,16 @@
+             }
+ 
+         case REQ_SET_ADDRESS:
+-            s_address = (uint8_t)(setup->wValue & 0x7F);
++            pad->address = (uint8_t)(setup->wValue & 0x7F);
+             return 0;                    /* zero-length status stage */
+ 
+         case REQ_SET_CONFIGURATION:
+-            s_configuration = (uint8_t)(setup->wValue & 0xFF);
++            pad->configuration = (uint8_t)(setup->wValue & 0xFF);
+             return 0;
+ 
+         case REQ_GET_CONFIGURATION:
+             if (!is_in || max < 1) return -1;
+-            out[0] = s_configuration;
++            out[0] = pad->configuration;
+             return 1;
+ 
+         case REQ_GET_STATUS:
+@@ -150,7 +146,7 @@
+     if (setup->bmRequestType == 0xa1 && setup->bRequest == 1 &&
+         setup->wValue == 0x0100 && setup->wIndex == 0) {
+         uint8_t report[20];
+-        int length = usb_gamepad_report(report,sizeof report);
++        int length = usb_gamepad_report(pad, report,sizeof report);
+         return copy_out(out,max,report,length,setup->wLength);
+     }
+     return -1;
+@@ -172,7 +168,7 @@
+  *   4..11  analog buttons A B X Y Black White, then the two triggers
+  *   12..19 four signed 16-bit stick axes, little endian
+  */
+-int usb_gamepad_report(uint8_t *out, int max)
++int usb_gamepad_report(UsbGamepad *pad, uint8_t *out, int max)
+ {
+     XBOX_INPUT_STATE state;
+     const XBOX_GAMEPAD *g;
+@@ -186,7 +182,7 @@
+ 
+     /* A disconnected host pad is not an error here: the device is present on
+      * the bus either way, it just reports nothing pressed. */
+-    if (xbox_InputGetState(0, &state) != 0)
++    if (xbox_InputGetState(pad->input_port, &state) != 0)
+         return 20;
+ 
+     g = &state.Gamepad;
+diff --git a/src/usb/usb_gamepad.h b/src/usb/usb_gamepad.h
+--- a/src/usb/usb_gamepad.h
++++ b/src/usb/usb_gamepad.h
+@@ -24,6 +24,15 @@
+     uint16_t wLength;
+ } UsbSetup;
+ 
++/* State belongs to one USB device, not to the bus. */
++typedef struct {
++    unsigned input_port;
++    uint8_t address, configuration;
++    UsbSetup setup;
++    uint8_t control_reply[256];
++    int setup_pending, control_size, control_offset;
++} UsbGamepad;
++
+ /* Answer a control request.
+  *
+  * Returns the number of bytes written to `out` (at most `max`), or -1 if the
+@@ -31,12 +40,10 @@
+  * stall rather than as a short transfer, because those mean different things
+  * to a driver.
+  */
+-int usb_gamepad_control(const UsbSetup *setup, uint8_t *out, int max);
++int usb_gamepad_control(UsbGamepad *pad, const UsbSetup *setup, uint8_t *out, int max);
+ 
+ /* Fill in the 20-byte input report. Returns the byte count written. */
+-int usb_gamepad_report(uint8_t *out, int max);
++int usb_gamepad_report(UsbGamepad *pad, uint8_t *out, int max);
+ 
+-/* The address the host assigned with SET_ADDRESS, 0 until it does. */
+-uint8_t usb_gamepad_address(void);
+ 
+ #endif /* XBOX_USB_GAMEPAD_H */
+diff --git a/src/input/xinput_device.c b/src/input/xinput_device.c
+--- a/src/input/xinput_device.c
++++ b/src/input/xinput_device.c
+@@ -395,6 +395,7 @@
+ {
+     if (dwPort >= XBOX_MAX_CONTROLLERS) return FALSE;
+     pthread_mutex_lock(&controller_lock);
++    refresh_controllers();
+     BOOL connected=g_controller_connected[dwPort];
+     pthread_mutex_unlock(&controller_lock);
+     return connected;

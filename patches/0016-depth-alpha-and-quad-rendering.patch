@@ -1,0 +1,219 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -217,6 +217,9 @@
+ 
+ static struct {
+     VertexAttr attr[NV_VERTEX_ATTRS];
++    uint32_t depth_offset, depth_pitch, depth_enable, depth_write, depth_func, depth_clear;
++    uint32_t alpha_enable, alpha_func, alpha_ref, blend_enable, blend_src, blend_dst;
++    uint32_t blend_equation;
+     uint32_t   prim;                    /* SET_BEGIN_END parameter, 0 = ended */
+     uint16_t   idx[NV_MAX_INDICES];
+     uint32_t   idx_count;
+@@ -290,7 +293,7 @@
+      * which is nearly all of them, since swizzled is the Xbox default. That
+      * left the title's own textures unsampled and every textured quad drawn in
+      * flat vertex colour. */
+-    s_gpu.tex.valid = s_gpu.tex.offset && s_gpu.tex.width && s_gpu.tex.height
++    s_gpu.tex.valid = (s_tex_reg[(0x1b0c - NV_TEX_FIRST) / 4] & (1u << 30)) && s_gpu.tex.offset && s_gpu.tex.width && s_gpu.tex.height
+                    && (tex_size_from_format(s_gpu.tex.color)
+                        || s_gpu.tex.pitch);
+ }
+@@ -496,8 +499,8 @@
+ 
+ /* Defined below, next to the rest of the rasteriser; the clear path uses it
+  * for RECOMP_RASTER_TEST. */
+-static void raster_triangle(const float a[2], const float b[2],
+-                            const float c[2], uint32_t argb,
++static void raster_triangle(const float a[4], const float b[4],
++                            const float c[4], uint32_t argb,
+                             const float uv[3][2]);
+ 
+ static void clear_surface(uint32_t param)
+@@ -506,6 +509,16 @@
+     uint32_t bpp = surface_bpp();
+     uint32_t y, x;
+ 
++    if ((param & 1) && s_gpu.depth_offset && s_gpu.depth_pitch) {
++        uint32_t base = dma_resolve(s_gpu.depth_offset);
++        if (!surface_hits_image(base, (s_gpu.clip_y + s_gpu.clip_h) * s_gpu.depth_pitch)) {
++            for (y = s_gpu.clip_y; y < s_gpu.clip_y + s_gpu.clip_h; ++y) {
++                uint32_t *row = (uint32_t *)(mem + base + y * s_gpu.depth_pitch);
++                for (x = s_gpu.clip_x; x < s_gpu.clip_x + s_gpu.clip_w; ++x)
++                    row[x] = (row[x] & 255) | (s_gpu.depth_clear & 0xffffff00u);
++            }
++        }
++    }
+     if (!(param & NV097_CLEAR_COLOR_MASK))
+         return;                            /* depth/stencil only */
+     if (!s_gpu.color_offset || !s_gpu.pitch || !s_gpu.clip_h || bpp == 0)
+@@ -519,6 +532,8 @@
+         s_gpu.color_base = base;
+     }
+ 
++    /* Preserve the completed contents before this back buffer is reused. */
++    xbox_FramebufferWindowSet(dma_resolve(s_gpu.color_offset), s_gpu.pitch);
+     for (y = 0; y < s_gpu.clip_h; y++) {
+         uint8_t *row = mem + s_gpu.color_base
+                      + (size_t)(s_gpu.clip_y + y) * s_gpu.pitch;
+@@ -578,7 +593,7 @@
+         /* Every clear, not once: the title clears each frame and double-buffers,
+          * so a triangle drawn a single time is erased before anyone sees it. */
+         if (s_gpu.clip_w && s_gpu.clip_h) {
+-            float a[2], b[2], c[2];
++            float a[4] = {0,0,0,1}, b[4] = {0,0,0,1}, c[4] = {0,0,0,1};
+             a[0] = s_gpu.clip_w * 0.5f; a[1] = s_gpu.clip_h * 0.15f;
+             b[0] = s_gpu.clip_w * 0.85f; b[1] = s_gpu.clip_h * 0.85f;
+             c[0] = s_gpu.clip_w * 0.15f; c[1] = s_gpu.clip_h * 0.85f;
+@@ -596,7 +611,7 @@
+      * would show the one nothing is writing. */
+     /* The window has to read where the pixels actually are, which is the
+      * resolved address rather than the DMA-object offset. */
+-    xbox_FramebufferWindowSet(dma_resolve(s_gpu.color_offset), s_gpu.pitch);
++
+ 
+     /* And open the window, rather than waiting for AvSetDisplayMode to do it.
+      *
+@@ -890,6 +905,28 @@
+     return 1;
+ }
+ 
++static int comparison(uint32_t func, float a, float b)
++{
++    switch (func & 7) {
++    case 0: return 0; case 1: return a < b; case 2: return a == b;
++    case 3: return a <= b; case 4: return a > b; case 5: return a != b;
++    case 6: return a >= b; default: return 1;
++    }
++}
++static unsigned blend_factor(uint32_t f, uint32_t src, uint32_t dst, int shift)
++{
++    switch (f) {
++    case 0: return 0; case 1: return 255;
++    case 0x300: return (src >> shift) & 255;
++    case 0x301: return 255 - ((src >> shift) & 255);
++    case 0x302: return src >> 24; case 0x303: return 255 - (src >> 24);
++    case 0x304: return dst >> 24; case 0x305: return 255 - (dst >> 24);
++    case 0x306: return (dst >> shift) & 255;
++    case 0x307: return 255 - ((dst >> shift) & 255);
++    default: return 255;
++    }
++}
++static void fragment(uint8_t *mem, uint32_t bpp, int x, int y, float z, uint32_t argb);
+ static void put_pixel(uint8_t *mem, uint32_t bpp, int x, int y, uint32_t argb)
+ {
+     uint8_t *row;
+@@ -912,11 +949,36 @@
+     }
+ }
+ 
++static void fragment(uint8_t *mem, uint32_t bpp, int x, int y, float z, uint32_t argb)
++{
++    if (s_gpu.alpha_enable && !comparison(s_gpu.alpha_func, argb >> 24, s_gpu.alpha_ref & 255)) return;
++    if (s_gpu.depth_enable && s_gpu.depth_offset && s_gpu.depth_pitch) {
++        uint32_t base = dma_resolve(s_gpu.depth_offset);
++        if (surface_hits_image(base, (s_gpu.clip_y + s_gpu.clip_h) * s_gpu.depth_pitch)) return;
++        uint32_t *depth = (uint32_t *)(mem + base + y * s_gpu.depth_pitch + x * 4);
++        if (!isfinite(z) || !comparison(s_gpu.depth_func, z, *depth >> 8)) return;
++        if (s_gpu.depth_write) *depth = (*depth & 255) | ((uint32_t)fminf(16777215, fmaxf(0,z)) << 8);
++    }
++    if (s_gpu.blend_enable && bpp == 4) {
++        uint32_t dst = *(uint32_t *)(s_surface + y * s_gpu.pitch + x * 4), mixed = 0;
++        for (int k = 0; k < 4; ++k) {
++            int shift = k * 8;
++            int a = ((argb >> shift) & 255) * blend_factor(s_gpu.blend_src, argb, dst, shift);
++            int b = ((dst >> shift) & 255) * blend_factor(s_gpu.blend_dst, argb, dst, shift);
++            int v = s_gpu.blend_equation == 0x800a ? a-b : s_gpu.blend_equation == 0x800b ? b-a : a+b;
++            v = v / 255; if (v < 0) v = 0; if (v > 255) v = 255;
++            mixed |= (uint32_t)v << shift;
++        }
++        argb = mixed;
++    }
++    put_pixel(mem, bpp, x, y, argb);
++}
++
+ /* Half-space fill. Barycentric edge functions rather than scanline slopes:
+  * the same test decides both windings, so a title that emits clockwise
+  * triangles does not silently render nothing. */
+-static void raster_triangle(const float a[2], const float b[2],
+-                            const float c[2], uint32_t argb,
++static void raster_triangle(const float a[4], const float b[4],
++                            const float c[4], uint32_t argb,
+                             const float uv[3][2])
+ {
+     uint8_t *mem = (uint8_t *)xbox_GetMemoryOffset();
+@@ -961,6 +1023,7 @@
+             if (!((w0 >= 0 && w1 >= 0 && w2 >= 0)
+                || (w0 <= 0 && w1 <= 0 && w2 <= 0)))
+                 continue;
++            float z = (w1 * a[2] + w2 * b[2] + w0 * c[2]) / area;
+             if (textured) {
+                 /* Barycentric, straight from the edge functions already
+                  * computed: w1 is the area opposite a, w2 opposite b, w0
+@@ -975,11 +1038,11 @@
+                 if (su < 0.0f) su = 0.0f;
+                 if (sv < 0.0f) sv = 0.0f;
+                 if (sample_texture((uint32_t)su, (uint32_t)sv, &texel)) {
+-                    put_pixel(mem, bpp, x, y, texel);
++                    fragment(mem, bpp, x, y, z, texel);
+                     continue;
+                 }
+             }
+-            put_pixel(mem, bpp, x, y, argb);
++            fragment(mem, bpp, x, y, z, argb);
+         }
+     }
+     s_gpu.tris_drawn++;
+@@ -1227,13 +1290,23 @@
+                            vertex_color(s_gpu.idx[i]));
+         break;
+     case NV_PRIM_TRIANGLE_FAN:
+-    case NV_PRIM_QUADS:
+-    case NV_PRIM_QUAD_STRIP:
+         /* A fan and a quad both rasterise as a triangle fan around index 0;
+          * for a quad that is exactly its two triangles. */
+         for (i = 1; i + 1 < s_gpu.idx_count; i++)
+             raster_indexed(s_gpu.idx[0], s_gpu.idx[i], s_gpu.idx[i+1],
+                            vertex_color(s_gpu.idx[0]));
++        break;
++    case NV_PRIM_QUADS:
++        for (i = 0; i + 3 < s_gpu.idx_count; i += 4) {
++            raster_indexed(s_gpu.idx[i],s_gpu.idx[i+1],s_gpu.idx[i+2],vertex_color(s_gpu.idx[i]));
++            raster_indexed(s_gpu.idx[i],s_gpu.idx[i+2],s_gpu.idx[i+3],vertex_color(s_gpu.idx[i]));
++        }
++        break;
++    case NV_PRIM_QUAD_STRIP:
++        for (i = 0; i + 3 < s_gpu.idx_count; i += 2) {
++            raster_indexed(s_gpu.idx[i],s_gpu.idx[i+1],s_gpu.idx[i+3],vertex_color(s_gpu.idx[i]));
++            raster_indexed(s_gpu.idx[i],s_gpu.idx[i+3],s_gpu.idx[i+2],vertex_color(s_gpu.idx[i]));
++        }
+         break;
+     default:
+         break;                             /* points and lines: not yet */
+@@ -1624,6 +1697,18 @@
+     }
+     if (ssx_vertex_method(method, param)) return;
+     switch (method) {
++    case 0x0214: s_gpu.depth_offset = param; break;
++    case 0x0300: s_gpu.alpha_enable = param; break;
++    case 0x0304: s_gpu.blend_enable = param; break;
++    case 0x030c: s_gpu.depth_enable = param; break;
++    case 0x033c: s_gpu.alpha_func = param; break;
++    case 0x0340: s_gpu.alpha_ref = param; break;
++    case 0x0344: s_gpu.blend_src = param; break;
++    case 0x0348: s_gpu.blend_dst = param; break;
++    case 0x0350: s_gpu.blend_equation = param; break;
++    case 0x0354: s_gpu.depth_func = param; break;
++    case 0x035c: s_gpu.depth_write = param; break;
++    case 0x1d8c: s_gpu.depth_clear = param; break;
+     case 0x0100: /* NV097_NO_OPERATION: nonzero argument requests notification */
+         if (param) queue_gpu_notification(param);
+         break;
+@@ -1660,6 +1745,7 @@
+         s_gpu.format = param;
+         break;
+     case NV097_SET_SURFACE_PITCH:
++        s_gpu.depth_pitch = param >> 16;
+         s_gpu.pitch = param & 0xFFFF;      /* colour pitch; zeta is the top half */
+         break;
+     case NV097_SET_SURFACE_COLOR_OFFSET:

@@ -1,0 +1,92 @@
+diff --git a/src/kernel/nv2a_pb_exec.c b/src/kernel/nv2a_pb_exec.c
+index 4bd83d8..24454d9 100644
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -34,6 +34,7 @@
+ /* The swizzle decoder the D3D8 layer already uses -- one implementation of
+  * Morton order, not a second one that can disagree with it. */
+ #include "../d3d/d3d8_swizzle.h"
++#include "nv2a_semaphore.h"
+ 
+ extern ptrdiff_t xbox_GetMemoryOffset(void);
+ extern void xbox_FramebufferWindowSet(uint32_t fb_va, uint32_t pitch);
+@@ -1536,6 +1537,7 @@ static int imm_vertex_method(uint32_t method, uint32_t param)
+ void nv2a_pb_exec_method(uint32_t subch, uint32_t method, uint32_t param)
+ {
+     static int inited;
++    static uint32_t semaphore_dma, semaphore_offset;
+     if (!inited) {
+         inited = 1;
+         s_gpu.min_x = s_gpu.min_y = 1e30f;
+@@ -1567,6 +1569,27 @@ void nv2a_pb_exec_method(uint32_t subch, uint32_t method, uint32_t param)
+         return;
+     }
+     switch (method) {
++    case 0x01A4: /* NV097_SET_CONTEXT_DMA_SEMAPHORE */
++        semaphore_dma = param;
++        break;
++    case 0x1D6C: /* NV097_SET_SEMAPHORE_OFFSET */
++        semaphore_offset = param;
++        break;
++    case 0x1D70: { /* NV097_BACK_END_WRITE_SEMAPHORE_RELEASE */
++        uintptr_t base = (uintptr_t)xbox_GetMemoryOffset();
++        uint32_t ramht = *(volatile uint32_t *)(base + 0xFD002210u);
++        if (!nv2a_semaphore_write((const uint8_t *)(base + 0xFD700000u),
++                0x100000, ramht, semaphore_dma, semaphore_offset, param,
++                (uint8_t *)(base + XBOX_CONTIG_BASE), XBOX_CONTIG_SIZE)) {
++            fprintf(stderr, "[GPU] rejected semaphore DMA=%u offset=0x%X value=%u\n",
++                    semaphore_dma, semaphore_offset, param);
++            note_unhandled(method, param);
++        } else if (getenv("RECOMP_PB_EXEC_VERBOSE")) {
++            fprintf(stderr, "[GPU] semaphore DMA=%u offset=0x%X value=%u\n",
++                    semaphore_dma, semaphore_offset, param);
++        }
++        break;
++    }
+     case NV097_SET_SURFACE_CLIP_HORIZONTAL:
+         s_gpu.clip_x = param & 0xFFFF;
+         s_gpu.clip_w = (param >> 16) & 0xFFFF;
+diff --git a/src/kernel/nv2a_semaphore.h b/src/kernel/nv2a_semaphore.h
+new file mode 100644
+index 0000000..f0b2bae
+--- /dev/null
++++ b/src/kernel/nv2a_semaphore.h
+@@ -0,0 +1,38 @@
++/* Bounded NV2A DMA-object semaphore writes for the experimental PB executor. */
++#ifndef NV2A_SEMAPHORE_H
++#define NV2A_SEMAPHORE_H
++#include <stdint.h>
++#include <stddef.h>
++#include <string.h>
++static uint32_t sem_u32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
++static int nv2a_semaphore_write(const uint8_t *ramin, size_t ramin_size,
++                              uint32_t ramht, uint32_t handle, uint32_t offset,
++                              uint32_t value, uint8_t *physical, size_t physical_size)
++{
++    size_t table = ((ramht >> 4) & 0x1f) << 12;
++    size_t bytes = (size_t)4096 << ((ramht >> 16) & 3);
++    if (!handle || (offset & 3) || table > ramin_size || bytes > ramin_size - table)
++        return 0;
++    for (size_t i = table; i < table + bytes; i += 8) {
++        uint32_t ctx = sem_u32(ramin + i + 4);
++        /* Valid, channel zero, software/DMA object rather than graphics object. */
++        if (sem_u32(ramin + i) != handle || !(ctx & 0x80000000u) ||
++            (ctx & 0x1f030000u)) continue;
++        size_t object = (ctx & 0xffffu) << 4;
++        if (object > ramin_size || 12 > ramin_size - object) return 0;
++        uint32_t flags = sem_u32(ramin + object);
++        uint32_t limit = sem_u32(ramin + object + 4);
++        uint32_t frame = sem_u32(ramin + object + 8);
++        uint32_t cls = flags & 0xfff;
++        if (cls != 3 && cls != 0x3d) return 0;
++        /* Runtime's contiguous window is the physical memory view. */
++        uint32_t address = ((frame & 0xfffff000u) | (flags >> 20)) & 0x07ffffffu;
++        uint64_t dest = (uint64_t)address + offset;
++        if ((dest & 3) || limit < 3 || offset > limit - 3 ||
++            dest > physical_size || 4 > physical_size - dest) return 0;
++        memcpy(physical + (size_t)dest, &value, 4);
++        return 1;
++    }
++    return 0;
++}
++#endif

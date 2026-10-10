@@ -1,0 +1,101 @@
+--- a/src/kernel/kernel_file.c
++++ b/src/kernel/kernel_file.c
+@@ -300,10 +300,13 @@
+     return STATUS_UNSUCCESSFUL;
+ }
+ 
++static void close_dir_context(HANDLE handle);
++
+ NTSTATUS __stdcall xbox_NtClose(HANDLE Handle)
+ {
+     XBOX_TRACE(XBOX_LOG_FILE, "NtClose(handle=%p)", Handle);
+     if (Handle && Handle != INVALID_HANDLE_VALUE) {
++        close_dir_context(Handle);
+         CloseHandle(Handle);
+         return STATUS_SUCCESS;
+     }
+@@ -583,32 +586,43 @@
+ } DIR_CONTEXT;
+ 
+ static DIR_CONTEXT s_dir_contexts[MAX_DIR_CONTEXTS];
+-static CRITICAL_SECTION s_dir_cs;
+-static BOOL s_dir_cs_init = FALSE;
++static SRWLOCK s_dir_lock=SRWLOCK_INIT;
+ 
+ static DIR_CONTEXT* find_or_create_dir_context(HANDLE FileHandle, BOOL create)
+ {
+-    if (!s_dir_cs_init) { InitializeCriticalSection(&s_dir_cs); s_dir_cs_init = TRUE; }
+-    EnterCriticalSection(&s_dir_cs);
++    AcquireSRWLockExclusive(&s_dir_lock);
+     for (int i = 0; i < MAX_DIR_CONTEXTS; i++) {
+-        if (s_dir_contexts[i].file_handle == FileHandle && s_dir_contexts[i].find_handle != NULL) {
+-            LeaveCriticalSection(&s_dir_cs);
++        if (s_dir_contexts[i].file_handle == FileHandle) {
++            ReleaseSRWLockExclusive(&s_dir_lock);
+             return &s_dir_contexts[i];
+         }
+     }
+-    if (!create) { LeaveCriticalSection(&s_dir_cs); return NULL; }
++    if (!create) { ReleaseSRWLockExclusive(&s_dir_lock); return NULL; }
+     for (int i = 0; i < MAX_DIR_CONTEXTS; i++) {
+-        if (s_dir_contexts[i].find_handle == NULL) {
++        if (s_dir_contexts[i].file_handle == NULL) {
+             s_dir_contexts[i].file_handle = FileHandle;
+             s_dir_contexts[i].first_done = FALSE;
+-            LeaveCriticalSection(&s_dir_cs);
++            ReleaseSRWLockExclusive(&s_dir_lock);
+             return &s_dir_contexts[i];
+         }
+     }
+-    LeaveCriticalSection(&s_dir_cs);
++    ReleaseSRWLockExclusive(&s_dir_lock);
+     return NULL;
+ }
+ 
++static void close_dir_context(HANDLE handle)
++{
++    AcquireSRWLockExclusive(&s_dir_lock);
++    for(int i=0;i<MAX_DIR_CONTEXTS;i++) {
++        DIR_CONTEXT *ctx=&s_dir_contexts[i];
++        if(ctx->file_handle!=handle)continue;
++        if(ctx->find_handle && ctx->find_handle!=INVALID_HANDLE_VALUE)
++            FindClose(ctx->find_handle);
++        memset(ctx,0,sizeof *ctx);
++    }
++    ReleaseSRWLockExclusive(&s_dir_lock);
++}
++
+ NTSTATUS __stdcall xbox_NtQueryDirectoryFile(
+     HANDLE FileHandle, HANDLE Event, PIO_APC_ROUTINE ApcRoutine, PVOID ApcContext,
+     PXBOX_IO_STATUS_BLOCK IoStatusBlock, PVOID FileInformation, ULONG Length,
+@@ -657,17 +671,20 @@
+             swprintf_s(search_path, MAX_PATH, L"%s\\*", clean_path);
+         }
+         ctx->find_handle = FindFirstFileW(search_path, &ctx->find_data);
++        ctx->first_done = TRUE;
+         if (ctx->find_handle == INVALID_HANDLE_VALUE) {
+             ctx->find_handle = NULL;
+             IoStatusBlock->Status = STATUS_NO_MORE_FILES;
+             return STATUS_NO_MORE_FILES;
+         }
+-        ctx->first_done = TRUE;
+     } else {
++        if(!ctx->find_handle) {
++            IoStatusBlock->Status=STATUS_NO_MORE_FILES;
++            return STATUS_NO_MORE_FILES;
++        }
+         if (!FindNextFileW(ctx->find_handle, &ctx->find_data)) {
+             FindClose(ctx->find_handle);
+             ctx->find_handle = NULL;
+-            ctx->file_handle = NULL;
+             IoStatusBlock->Status = STATUS_NO_MORE_FILES;
+             return STATUS_NO_MORE_FILES;
+         }
+@@ -679,7 +696,6 @@
+         if (!FindNextFileW(ctx->find_handle, &ctx->find_data)) {
+             FindClose(ctx->find_handle);
+             ctx->find_handle = NULL;
+-            ctx->file_handle = NULL;
+             IoStatusBlock->Status = STATUS_NO_MORE_FILES;
+             return STATUS_NO_MORE_FILES;
+         }

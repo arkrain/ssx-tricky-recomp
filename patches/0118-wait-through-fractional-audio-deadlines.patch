@@ -1,0 +1,14 @@
+--- a/src/apu/apu_timing.h
++++ b/src/apu/apu_timing.h
+@@ -12,7 +12,10 @@
+ }
+ static inline int64_t apu_deadline_remaining_ms(int64_t deadline, int64_t now_us)
+ {
+-    return (deadline - now_us * 3) / 3000;
++    int64_t remaining = deadline - now_us * 3;
++    /* A fractional millisecond still lies before the audio deadline. A
++     * truncated zero would release an entire 256-sample block early. */
++    return remaining > 0 ? (remaining + 2999) / 3000 : remaining / 3000;
+ }
+ static inline void apu_deadline_advance(int64_t *deadline)
+ {

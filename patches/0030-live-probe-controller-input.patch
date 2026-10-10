@@ -1,0 +1,37 @@
+--- a/src/input/xinput_device.c
++++ b/src/input/xinput_device.c
+@@ -128,6 +128,7 @@
+ /* The framebuffer event thread owns SDL events; USB reads an atomic snapshot. */
+ static SDL_atomic_t keyboard_buttons;
+ static uint32_t test_start_ms;
++static const char *test_input_file;
+ static unsigned test_buttons=0x10;
+ static uint32_t input_start_ticks;
+ void xbox_InputKeyboardEvent(int scancode, int pressed)
+@@ -158,6 +159,18 @@
+     uint32_t elapsed=SDL_GetTicks()-input_start_ticks;
+     if (test_start_ms && elapsed >= test_start_ms && elapsed-test_start_ms < 2000)
+         buttons |= test_buttons;
++    /* Optional live probe control: a hexadecimal keyboard-mask file. The
++     * normal input path never opens a file. USB polling checks at most 60 Hz. */
++    if (test_input_file) {
++        static uint32_t last_read;
++        static unsigned file_buttons;
++        if (elapsed-last_read >= 16) {
++            last_read=elapsed; file_buttons=0;
++            FILE *f=fopen(test_input_file,"r");
++            if(f) { unsigned mask; if(fscanf(f,"%x",&mask)==1)file_buttons=mask&0x3ff; fclose(f); }
++        }
++        buttons |= file_buttons;
++    }
+     state->Gamepad.wButtons |= buttons & 0xff;
+     if (buttons & 0x100) state->Gamepad.bAnalogButtons[XBOX_BUTTON_A]=255;
+     if (buttons & 0x200) state->Gamepad.bAnalogButtons[XBOX_BUTTON_B]=255;
+@@ -183,6 +196,7 @@
+     if (!SDL_WasInit(SDL_INIT_GAMECONTROLLER))
+         SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER);
+     input_start_ticks=SDL_GetTicks();
++    test_input_file=getenv("RECOMP_TEST_INPUT_FILE");
+     const char *test=getenv("RECOMP_TEST_START_MS");
+     test_start_ms=test ? (uint32_t)strtoul(test,NULL,10) : 0;
+     const char *mask=getenv("RECOMP_TEST_BUTTONS");

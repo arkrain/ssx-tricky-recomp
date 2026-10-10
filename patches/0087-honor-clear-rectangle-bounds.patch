@@ -1,0 +1,106 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -158,6 +158,8 @@
+ #define NV097_SET_SURFACE_COLOR_OFFSET    0x0210
+ #define NV097_SET_COLOR_CLEAR_VALUE       0x1D90
+ #define NV097_CLEAR_SURFACE               0x1D94
++#define NV097_SET_CLEAR_RECT_HORIZONTAL   0x1D98
++#define NV097_SET_CLEAR_RECT_VERTICAL     0x1D9C
+ #define NV097_SET_VERTEX_DATA_ARRAY_OFFSET 0x1720   /* +i*4, 16 attributes */
+ #define NV097_SET_VERTEX_DATA_ARRAY_FORMAT 0x1760   /* +i*4 */
+ #define NV097_SET_BEGIN_END               0x17FC
+@@ -289,6 +291,7 @@
+ #define NV_TEX_FIRST 0x1B00
+ #define NV_TEX_LAST  0x1BFC
+ static uint32_t s_render_reg[0x2000/4];
++static unsigned s_clear_rect_set;
+ static uint32_t s_color_write_mask=0xffffffffu;
+ static float s_triangle_color[3][2][4];
+ static int s_triangle_colors;
+@@ -563,13 +566,33 @@
+     uint8_t *mem = (uint8_t *)xbox_GetMemoryOffset();
+     uint32_t bpp = surface_bpp();
+     uint32_t y, x;
++    uint32_t x0=s_gpu.clip_x, x1=x0+s_gpu.clip_w;
++    uint32_t y0=s_gpu.clip_y, y1=y0+s_gpu.clip_h;
++    /* CLEAR_RECT has inclusive min/max coordinates, not a width/height.
++     * Cinematic bars clear just the top and bottom of an already drawn
++     * surface. Keep the surface-sized default until each axis is supplied. */
++    if(s_clear_rect_set&1) {
++        uint32_t rect=s_render_reg[NV097_SET_CLEAR_RECT_HORIZONTAL/4];
++        uint32_t lo=rect&0xffff, hi=rect>>16;
++        if(lo>hi)return;
++        if(x0<lo)x0=lo;
++        if(x1>hi+1)x1=hi+1;
++    }
++    if(s_clear_rect_set&2) {
++        uint32_t rect=s_render_reg[NV097_SET_CLEAR_RECT_VERTICAL/4];
++        uint32_t lo=rect&0xffff, hi=rect>>16;
++        if(lo>hi)return;
++        if(y0<lo)y0=lo;
++        if(y1>hi+1)y1=hi+1;
++    }
++    if(x0>=x1 || y0>=y1)return;
+ 
+     if ((param & 1) && s_gpu.depth_offset && s_gpu.depth_pitch) {
+         uint32_t base = dma_resolve(s_gpu.depth_offset);
+-        if (!surface_hits_image(base, (s_gpu.clip_y + s_gpu.clip_h) * s_gpu.depth_pitch)) {
+-            for (y = s_gpu.clip_y; y < s_gpu.clip_y + s_gpu.clip_h; ++y) {
++        if (!surface_hits_image(base, y1 * s_gpu.depth_pitch)) {
++            for (y = y0; y < y1; ++y) {
+                 uint32_t *row = (uint32_t *)(mem + base + y * s_gpu.depth_pitch);
+-                for (x = s_gpu.clip_x; x < s_gpu.clip_x + s_gpu.clip_w; ++x)
++                for (x = x0; x < x1; ++x)
+                     row[x] = (row[x] & 255) | (s_gpu.depth_clear & 0xffffff00u);
+             }
+         }
+@@ -581,7 +604,7 @@
+     {
+         uint32_t base = dma_resolve(s_gpu.color_offset);
+         if (surface_write_refused(base,
+-                                  (s_gpu.clip_y + s_gpu.clip_h) * s_gpu.pitch,
++                                  y1 * s_gpu.pitch,
+                                   "clear"))
+             return;
+         s_gpu.color_base = base;
+@@ -589,12 +612,12 @@
+ 
+     /* Preserve the completed contents before this back buffer is reused. */
+     xbox_FramebufferWindowSet(dma_resolve(s_gpu.color_offset), s_gpu.pitch);
+-    for (y = 0; y < s_gpu.clip_h; y++) {
++    for (y = y0; y < y1; y++) {
+         uint8_t *row = mem + s_gpu.color_base
+-                     + (size_t)(s_gpu.clip_y + y) * s_gpu.pitch;
++                     + (size_t)y * s_gpu.pitch;
+         if (bpp == 4) {
+-            uint32_t *p = (uint32_t *)row + s_gpu.clip_x;
+-            for (x = 0; x < s_gpu.clip_w; x++)
++            uint32_t *p = (uint32_t *)row;
++            for (x = x0; x < x1; x++)
+                 p[x] = s_gpu.clear_color;
+         } else if (bpp == 2) {
+             /* The clear value is always given as A8R8G8B8; a 16-bit surface
+@@ -602,8 +625,8 @@
+             uint16_t v = (uint16_t)(((s_gpu.clear_color >> 8) & 0xF800)
+                                   | ((s_gpu.clear_color >> 5) & 0x07E0)
+                                   | ((s_gpu.clear_color >> 3) & 0x001F));
+-            uint16_t *p = (uint16_t *)row + s_gpu.clip_x;
+-            for (x = 0; x < s_gpu.clip_w; x++)
++            uint16_t *p = (uint16_t *)row;
++            for (x = x0; x < x1; x++)
+                 p[x] = v;
+         }
+     }
+@@ -2153,6 +2176,12 @@
+     case NV097_SET_COLOR_CLEAR_VALUE:
+         s_gpu.clear_color = param;
+         break;
++    case NV097_SET_CLEAR_RECT_HORIZONTAL:
++        s_clear_rect_set |= 1;
++        break;
++    case NV097_SET_CLEAR_RECT_VERTICAL:
++        s_clear_rect_set |= 2;
++        break;
+     case NV097_CLEAR_SURFACE:
+         clear_surface(param);
+         break;

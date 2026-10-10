@@ -1,0 +1,32 @@
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -389,11 +389,19 @@
+            (addr >= 0xFED08000u && addr < 0xFED09000u);
+ }
+ #endif
++#ifdef RECOMP_DIRECT_APU_MMIO
++extern int ssx_apu_read32(uint32_t addr, uint32_t *value);
++extern int ssx_apu_write32(uint32_t addr, uint32_t value);
++#endif
+ static inline uint32_t RECOMP_READ32(uint32_t addr)
+ {
+ #ifdef RECOMP_DIRECT_USB_MMIO
+     uint32_t value;
+     if (RECOMP_USB_ADDRESS(addr) && xbox_OhciRead32(addr, &value)) return value;
++#endif
++#ifdef RECOMP_DIRECT_APU_MMIO
++    uint32_t apu_value;
++    if (addr >= 0xFE800000u && addr < 0xFE880000u && ssx_apu_read32(addr, &apu_value)) return apu_value;
+ #endif
+     return MEM32(addr);
+ }
+@@ -404,6 +412,9 @@
+ {
+ #ifdef RECOMP_DIRECT_USB_MMIO
+     if (RECOMP_USB_ADDRESS(addr) && xbox_OhciWrite32(addr, value)) return;
++#endif
++#ifdef RECOMP_DIRECT_APU_MMIO
++    if (addr >= 0xFE800000u && addr < 0xFE880000u && ssx_apu_write32(addr, value)) return;
+ #endif
+     if (addr == 0xFD600100u || addr == 0xFD600140u ||
+         addr == 0xFD400100u || addr == 0xFD400140u) {

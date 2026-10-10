@@ -1,0 +1,39 @@
+--- a/src/kernel/nv2a_pb_exec.c
++++ b/src/kernel/nv2a_pb_exec.c
+@@ -274,6 +274,7 @@
+ #define NV_TEX_FIRST 0x1B00
+ #define NV_TEX_LAST  0x1BFC
+ static uint32_t s_render_reg[0x2000/4];
++static uint32_t s_color_write_mask=0xffffffffu;
+ static float s_triangle_color[3][2][4];
+ static int s_triangle_colors;
+ static float s_triangle_tex[3][4][4];
+@@ -991,11 +992,13 @@
+         s_gpu.pixel_max = argb;
+     row = s_surface + (size_t)y * s_gpu.pitch;
+     if (bpp == 4) {
+-        ((uint32_t *)row)[x] = argb;
++        uint32_t old=((uint32_t *)row)[x];
++        ((uint32_t *)row)[x] = (old&~s_color_write_mask) | (argb&s_color_write_mask);
+     } else if (bpp == 2) {
+-        ((uint16_t *)row)[x] = (uint16_t)(((argb >> 8) & 0xF800)
+-                                        | ((argb >> 5) & 0x07E0)
+-                                        | ((argb >> 3) & 0x001F));
++        uint16_t mask=((s_color_write_mask&0xff0000)?0xf800:0) |
++            ((s_color_write_mask&0xff00)?0x7e0:0) | ((s_color_write_mask&0xff)?0x1f:0);
++        uint16_t color=(uint16_t)(((argb >> 8) & 0xF800) | ((argb >> 5) & 0x07E0) | ((argb >> 3) & 0x001F));
++        ((uint16_t *)row)[x]=(((uint16_t *)row)[x]&~mask)|(color&mask);
+     }
+ }
+ 
+@@ -1828,6 +1831,10 @@
+     case 0x0348: s_gpu.blend_dst = param; break;
+     case 0x0350: s_gpu.blend_equation = param; break;
+     case 0x0354: s_gpu.depth_func = param; break;
++    case 0x0358:
++        s_color_write_mask=((param&1)?0x000000ffu:0) | ((param&0x100)?0x0000ff00u:0) |
++            ((param&0x10000)?0x00ff0000u:0) | ((param&0x1000000)?0xff000000u:0);
++        break;
+     case 0x035c: s_gpu.depth_write = param; break;
+     case 0x1d8c: s_gpu.depth_clear = param; break;
+     case 0x0100: /* NV097_NO_OPERATION: nonzero argument requests notification */

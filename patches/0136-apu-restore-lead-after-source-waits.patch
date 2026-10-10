@@ -1,0 +1,11 @@
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -412,7 +412,7 @@
+         }
+         /* Restore a depleted queue without carrying an obsolete deadline.
+          * The normal queue oscillates around the target, well above this. */
+-        if (xa2_get_queued_frames() < target / 2)
++        if (xa2_get_queued_frames() < target - 2 * MIXER_FRAME_SAMPLES)
+             d->next_frame_time_thirds_us = 0;
+         int64_t now_us = qemu_clock_get_us(QEMU_CLOCK_REALTIME);
+         if (device_wait && d->next_frame_time_thirds_us < now_us * 3)

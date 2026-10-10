@@ -1,0 +1,29 @@
+--- a/templates/runtime/recomp_types.h
++++ b/templates/runtime/recomp_types.h
+@@ -395,6 +395,8 @@
+ #endif
+ static inline uint32_t RECOMP_READ32(uint32_t addr)
+ {
++    /* PFB write-cache flush completes synchronously for coherent host RAM. */
++    if (addr == 0xFD100410u) return 0;
+ #ifdef RECOMP_DIRECT_USB_MMIO
+     uint32_t value;
+     if (RECOMP_USB_ADDRESS(addr) && xbox_OhciRead32(addr, &value)) return value;
+@@ -422,6 +424,17 @@
+  * the summary pending until guest acknowledgement, including across DPCs. */
+ static inline void RECOMP_STORE32(uint32_t addr, uint32_t value)
+ {
++    if (addr == 0xFD100410u) {
++        /* Publish CPU-written pushbuffer data before the guest updates PUT.
++         * This register flushes memory; GPU completion uses its own fences. */
++#if defined(_MSC_VER)
++        _mm_sfence();
++#else
++        __atomic_thread_fence(__ATOMIC_SEQ_CST);
++#endif
++        MEM32(addr) = value & ~0x00010000u;
++        return;
++    }
+ #ifdef RECOMP_DIRECT_USB_MMIO
+     if (RECOMP_USB_ADDRESS(addr) && xbox_OhciWrite32(addr, value)) return;
+ #endif

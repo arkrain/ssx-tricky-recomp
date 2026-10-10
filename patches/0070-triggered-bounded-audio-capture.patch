@@ -1,0 +1,41 @@
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -212,14 +212,35 @@
+ static FILE *s_pcm_dump;
+ static int s_pcm_checked;
+ static unsigned s_pcm_frames;
++static const char *s_pcm_path, *s_pcm_trigger;
++static unsigned s_pcm_poll;
+ static void capture_pcm(const int16_t samples[][2])
+ {
+     if (!s_pcm_checked) {
+         s_pcm_checked = 1;
+-        const char *path = getenv("RECOMP_AUDIO_DUMP");
+-        if (path && *path) {
+-            s_pcm_dump = fopen(path, "wb");
++        s_pcm_path = getenv("RECOMP_AUDIO_DUMP");
++        s_pcm_trigger = getenv("RECOMP_AUDIO_TRIGGER");
++        if (s_pcm_path && *s_pcm_path && (!s_pcm_trigger || !*s_pcm_trigger)) {
++            s_pcm_dump = fopen(s_pcm_path, "wb");
+             if (!s_pcm_dump) perror("RECOMP_AUDIO_DUMP");
++        }
++    }
++    /* Optional diagnostic trigger: an empty request file arms a new bounded
++     * capture. Poll at about 10 Hz, not on every audio frame. Never touch the
++     * filesystem on the normal playback path. The configured dump path is
++     * reused, so callers should archive a completed capture before rearming. */
++    if (s_pcm_path && *s_pcm_path && s_pcm_trigger && *s_pcm_trigger &&
++        ++s_pcm_poll >= 19) {
++        s_pcm_poll = 0;
++        FILE *request = fopen(s_pcm_trigger, "rb");
++        if (request) {
++            fclose(request);
++            if (remove(s_pcm_trigger) == 0) {
++                if (s_pcm_dump) fclose(s_pcm_dump);
++                s_pcm_frames = 0;
++                s_pcm_dump = fopen(s_pcm_path, "wb");
++                if (!s_pcm_dump) perror("RECOMP_AUDIO_DUMP");
++            }
+         }
+     }
+     if (!s_pcm_dump) return;

@@ -1,0 +1,113 @@
+--- a/src/apu/apu_core.c
++++ b/src/apu/apu_core.c
+@@ -36,6 +36,10 @@
+ }
+ 
+ MCPXAPUState *g_state = NULL;
++static const MCPXDspBackend *s_dsp_backend;
++void mcpx_apu_set_dsp_backend(const MCPXDspBackend *backend) {
++    assert(!g_state);s_dsp_backend=backend;
++}
+ 
+ /* Forward declarations for software mixer */
+ static void mixer_init(void);
+@@ -428,7 +432,8 @@
+     memset(mixbins, 0, sizeof(mixbins));
+ 
+     mcpx_apu_vp_frame(d, mixbins);
+-    mcpx_apu_dsp_frame(d, mixbins);
++    if(s_dsp_backend)s_dsp_backend->frame(d,mixbins);
++    else mcpx_apu_dsp_frame(d, mixbins);
+     mcpx_apu_monitor_frame(d);
+ 
+     d->ep_frame_div++;
+@@ -508,11 +513,12 @@
+     memset(d->regs, 0, sizeof(d->regs));
+     mcpx_apu_vp_reset(d);
+ 
+-    if (d->gp.dsp) {
++    if(s_dsp_backend)s_dsp_backend->reset(d);
++    if (!s_dsp_backend && d->gp.dsp) {
+         memset((void *)d->gp.dsp->core.pram_opcache, 0,
+                sizeof(d->gp.dsp->core.pram_opcache));
+     }
+-    if (d->ep.dsp) {
++    if (!s_dsp_backend && d->ep.dsp) {
+         memset((void *)d->ep.dsp->core.pram_opcache, 0,
+                sizeof(d->ep.dsp->core.pram_opcache));
+     }
+@@ -549,7 +555,15 @@
+     mcpx_apu_vp_init(d);
+ 
+     /* Init DSP (GP/EP - stubbed) */
+-    mcpx_apu_dsp_init(d);
++    if(s_dsp_backend) {
++        if(!s_dsp_backend->init(d)) {
++            mcpx_apu_vp_finalize(d);
++            qemu_mutex_unlock(&d->lock);
++            qemu_cond_destroy(&d->cond);qemu_cond_destroy(&d->idle_cond);
++            qemu_mutex_destroy(&d->lock);
++            free(d);g_state=NULL;return NULL;
++        }
++    } else mcpx_apu_dsp_init(d);
+ 
+     /* Init software mixer for DirectSound bridge */
+     mixer_init();
+@@ -590,6 +604,8 @@
+     qemu_thread_join(&d->apu_thread);
+     mcpx_apu_vp_finalize(d);
+     mcpx_apu_monitor_finalize(d);
++    if(s_dsp_backend)s_dsp_backend->destroy(d);
++    else {free(d->gp.dsp);free(d->ep.dsp);}
+ 
+     free(d);
+     g_state = NULL;
+@@ -610,6 +626,15 @@
+ void mcpx_apu_dispatch_mmio(MCPXAPUState *d, hwaddr addr, uint64_t val,
+                              unsigned int size, bool is_write)
+ {
++    if(s_dsp_backend && ((addr>=0x30000 && addr<0x40000) ||
++                        (addr>=0x50000 && addr<0x60000))) {
++        if(is_write) {
++            qemu_mutex_lock(&d->lock);
++            s_dsp_backend->write(d,(uint32_t)addr,(uint32_t)val,size);
++            qemu_mutex_unlock(&d->lock);
++        }
++        return;
++    }
+     if (addr >= 0x20000 && addr < 0x30000) {
+         /* VP region */
+         hwaddr vp_addr = addr - 0x20000;
+@@ -634,6 +659,12 @@
+ uint64_t mcpx_apu_mmio_read(MCPXAPUState *d, uint64_t addr, unsigned int size)
+ {
+     if (!d) return 0;
++    if(s_dsp_backend && ((addr>=0x30000 && addr<0x40000) ||
++                        (addr>=0x50000 && addr<0x60000))) {
++        qemu_mutex_lock(&d->lock);
++        uint32_t value=s_dsp_backend->read(d,(uint32_t)addr,size);
++        qemu_mutex_unlock(&d->lock);return value;
++    }
+     if (addr >= 0x20000 && addr < 0x30000) {
+         return mcpx_apu_vp_read(d, addr - 0x20000, size);
+     } else if (addr < 0x20000) {
+--- a/src/apu/apu.h
++++ b/src/apu/apu.h
+@@ -13,6 +13,17 @@
+ #endif
+ 
+ typedef struct MCPXAPUState MCPXAPUState;
++/* Install only before APU initialization. Callbacks run under the APU lock,
++ * except destroy, which runs after the audio thread has joined. */
++typedef struct MCPXDspBackend {
++    int (*init)(MCPXAPUState *);
++    void (*destroy)(MCPXAPUState *);
++    void (*reset)(MCPXAPUState *);
++    void (*frame)(MCPXAPUState *,float mixbins[32][32]);
++    uint32_t (*read)(MCPXAPUState *,uint32_t,unsigned);
++    void (*write)(MCPXAPUState *,uint32_t,uint32_t,unsigned);
++} MCPXDspBackend;
++void mcpx_apu_set_dsp_backend(const MCPXDspBackend *backend);
+ 
+ /* Configure the runtime's ordinary-RAM bus window before initialization. */
+ void mcpx_apu_set_low_ram(uint8_t *base, size_t size);
