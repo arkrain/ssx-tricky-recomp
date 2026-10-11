@@ -28,7 +28,7 @@ sudo apt install build-essential cmake ninja-build git pkg-config python3-venv \
   libsdl2-dev libepoxy-dev libegl1-mesa-dev libssl-dev \
   libavformat-dev libavcodec-dev libswscale-dev libswresample-dev libavutil-dev
 
-git clone https://github.com/arkrain/ssx-tricky-recomp.git
+git clone https://github.com/reindance/ssx-tricky-recomp.git
 cd ssx-tricky-recomp
 python3 -m venv .venv
 . .venv/bin/activate
